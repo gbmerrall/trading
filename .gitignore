@@ -1,0 +1,7 @@
+Pipfile.lock
+.DS_Store
+.cursor
+.pytest_cache
+.ruff_cache
+output/*
+!output/.gitkeep
