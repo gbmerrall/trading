@@ -1,15 +1,25 @@
 # Trading Strategy Backtesting Framework
 
-**Warning**: Vibe coded. I've been wanting to tinker with this stuff for a while but kept bumping
-it down my TODO list so thought I'd vibe code it. What's the worst that could go wrong?
+A robust, event-driven backtesting framework in Python for testing trading strategies against multiple benchmarks. Built with a focus on simplicity, reliability, and professional-grade portfolio management.
 
-A lightweight, event-driven backtesting framework in Python for testing simple trading strategies against multiple benchmarks. This project was built to explore strategy ideas with a focus on simplicity, readability, and test-driven development.
+## 🚀 Recent Major Improvements
+
+This framework has been significantly enhanced with:
+
+- **🛡️ Comprehensive Input Validation**: All external inputs are validated with clear error messages
+- **🏗️ Refactored Architecture**: Eliminated code duplication with clean base classes
+- **💼 Professional Portfolio Management**: Multi-asset support with detailed analytics
+- **📊 Enhanced Benchmarks**: Flexible benchmark system with configurable parameters
+- **🧪 Extensive Testing**: 100+ test cases with comprehensive coverage
+- **🔒 Security-Focused**: Sanitized inputs prevent common security issues
 
 ## Core Philosophy
 
-- **Simplicity Over Complexity**: The framework uses a simple, event-driven loop, avoiding complex vectorized operations to make the backtesting process transparent and easy to debug.
-- **Test-Driven**: The entire codebase is developed with a TDD approach, ensuring reliability and correctness. Test coverage is a high priority.
-- **Duck Typing**: Instead of rigid interfaces, the framework relies on Python's natural duck typing for strategies and benchmarks, offering greater flexibility.
+- **Simplicity Over Complexity**: Event-driven loop with transparent, debuggable processes
+- **Test-Driven Development**: Comprehensive test coverage ensures reliability
+- **Robust Validation**: All inputs are validated with clear, actionable error messages
+- **Professional-Grade**: Suitable for both research and production backtesting
+- **Extensible Design**: Easy to add new strategies and benchmarks
 
 ## Project Structure
 

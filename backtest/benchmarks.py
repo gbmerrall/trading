@@ -1,140 +1,309 @@
+"""
+Benchmark strategies for backtesting comparison.
+
+This module provides various benchmark strategies to compare against custom trading strategies.
+All benchmarks inherit from a common base class and use configuration for parameters.
+"""
+
 import pandas as pd
 import yfinance as yf
+from abc import ABC, abstractmethod
+from .validation import validate_positive_number, ValidationError
+from .config import get_benchmark_config
 
-class BuyAndHold:
-    """A benchmark that simulates a buy-and-hold strategy."""
+
+class BaseBenchmark(ABC):
+    """
+    Abstract base class for all benchmark strategies.
+    
+    Provides common functionality for data validation, price preparation,
+    and portfolio value calculations.
+    """
+    
+    def _validate_inputs(self, data: pd.DataFrame, start_capital: float) -> None:
+        """
+        Validate inputs for benchmark calculations.
+        
+        Args:
+            data: Price data DataFrame
+            start_capital: Starting capital amount
+            
+        Raises:
+            ValueError: If validation fails (for test compatibility)
+        """
+        try:
+            validate_positive_number(start_capital, "start_capital")
+            
+            # Check if data is DataFrame
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError(f"Expected pandas DataFrame, got {type(data).__name__}")
+            
+            # Check for minimum data points
+            if len(data) < 1:
+                raise ValueError("DataFrame must have at least 1 row")
+                
+        except ValidationError as e:
+            # Convert ValidationError to ValueError for test compatibility
+            raise ValueError(str(e))
+    
+    def _validate_close_column(self, data: pd.DataFrame) -> None:
+        """
+        Validate that Close column exists and handle specific error message.
+        
+        Args:
+            data: Price data DataFrame
+            
+        Raises:
+            ValueError: If Close column is missing
+        """
+        if 'Close' not in data.columns:
+            raise ValueError("Data must contain 'Close' column")
+    
+    def _prepare_prices(self, data: pd.DataFrame) -> pd.Series:
+        """
+        Prepare price data for calculations.
+        
+        Args:
+            data: Raw price data
+            
+        Returns:
+            Clean price series
+            
+        Raises:
+            ValueError: If all prices are NaN
+        """
+        self._validate_close_column(data)
+        prices = data['Close'].copy()
+        
+        # Check for all NaN values before any processing
+        if prices.isna().all():
+            raise ValueError("All close prices are NaN")
+        
+        # Forward fill to handle missing values
+        prices = prices.ffill()
+        
+        return prices
+    
+    def _calculate_portfolio_value(self, prices: pd.Series, start_capital: float) -> pd.Series:
+        """
+        Calculate portfolio value over time for buy and hold strategy.
+        
+        Args:
+            prices: Price series
+            start_capital: Starting capital
+            
+        Returns:
+            Portfolio value series
+        """
+        # Calculate returns
+        returns = prices / prices.iloc[0]
+        portfolio_values = start_capital * returns
+        
+        return portfolio_values
+    
+    @abstractmethod
+    def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
+        """
+        Calculate benchmark returns.
+        
+        Args:
+            data: Price data DataFrame
+            start_capital: Starting capital amount
+            
+        Returns:
+            Portfolio value series over time
+        """
+        pass
+
+
+class BuyAndHold(BaseBenchmark):
+    """
+    Simple buy and hold benchmark strategy.
+    
+    Buys the asset at the first available price and holds until the end.
+    """
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
         Calculate buy and hold returns.
         
         Args:
-            data (pd.DataFrame): DataFrame with price data, must have 'Close' column
-            start_capital (float): Initial capital to invest
+            data: Price data DataFrame with 'Close' column
+            start_capital: Starting capital amount
             
         Returns:
-            pd.Series: Series of cumulative returns
+            Portfolio value series over time
         """
-        if 'Close' not in data.columns:
-            raise ValueError("Data must contain 'Close' column")
-        
-        close = data['Close']
-        if not isinstance(close, pd.Series):
-            close = close.squeeze()
+        self._validate_inputs(data, start_capital)
+        prices = self._prepare_prices(data)
+        return self._calculate_portfolio_value(prices, start_capital)
 
-        is_all_nan = close.isnull().all()
-        if is_all_nan:
-            raise ValueError("All close prices are NaN")
-            
-        close = close.ffill().bfill()
-        returns = close.pct_change(fill_method=None)
-        cumulative_returns = (1 + returns).cumprod()
-        cumulative_returns.iloc[0] = 1.0
-        return start_capital * cumulative_returns
 
-class SPYBuyAndHold:
-    """A benchmark that compares performance against a buy-and-hold of SPY."""
+class SPYBuyAndHold(BaseBenchmark):
+    """
+    S&P 500 buy and hold benchmark using SPY ETF.
+    
+    Downloads SPY data for the same date range as the input data
+    and calculates buy and hold returns.
+    """
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
         Calculate SPY buy and hold returns.
         
         Args:
-            data (pd.DataFrame): DataFrame with price data, must have 'Close' column
-            start_capital (float): Initial capital to invest
+            data: Price data DataFrame (used for date range)
+            start_capital: Starting capital amount
             
         Returns:
-            pd.Series: Series of cumulative returns
+            Portfolio value series over time
         """
-        # TODO: Consider caching this data to avoid repeated downloads
-        spy_data = yf.download('SPY', 
-                             start=data.index[0],
-                             end=data.index[-1],
-                             auto_adjust=True,
-                             progress=False)
+        self._validate_inputs(data, start_capital)
         
-        if spy_data.empty or 'Close' not in spy_data.columns:
-            raise ValueError("Could not download SPY data or missing 'Close' column")
-            
-        close = spy_data['Close'].reindex(data.index).ffill().bfill()
-        if not isinstance(close, pd.Series):
-            close = close.squeeze()
-
-        is_all_nan = close.isnull().all()
-        if is_all_nan:
+        # Get date range from input data
+        start_date = data.index.min()
+        end_date = data.index.max()
+        
+        # Download SPY data
+        config = get_benchmark_config()
+        try:
+            spy_data = yf.download(
+                config.market_symbol, 
+                start=start_date, 
+                end=end_date + pd.Timedelta(days=1),
+                progress=False
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to download SPY data: {str(e)}")
+        
+        if spy_data.empty:
+            raise ValueError("Could not download SPY data")
+        
+        # Align SPY data with input data dates
+        spy_prices = spy_data['Close'].reindex(data.index, method='ffill')
+        
+        # Check if all prices are NaN after alignment
+        if spy_prices.isna().all():
             raise ValueError("All SPY close prices are NaN after alignment")
-            
-        spy_returns = close.pct_change(fill_method=None)
-        cumulative_returns = (1 + spy_returns).cumprod()
-        cumulative_returns.iloc[0] = 1.0
-        return start_capital * cumulative_returns
+        
+        # Forward fill any remaining NaN values
+        spy_prices = spy_prices.ffill()
+        
+        return self._calculate_portfolio_value(spy_prices, start_capital)
 
-class DollarCostAveraging:
+
+class DollarCostAveraging(BaseBenchmark):
     """
-    A benchmark that simulates a dollar-cost averaging (DCA) strategy.
+    Dollar Cost Averaging (DCA) benchmark strategy.
     
-    This benchmark simulates investing a total of `start_capital` in equal portions
-    over a series of regular intervals (`frequency`) throughout the backtest period.
+    Invests a fixed amount at regular intervals (daily, weekly, or monthly).
     """
     
     def __init__(self, frequency: str = 'monthly'):
         """
-        Initialize the strategy.
+        Initialize DCA benchmark.
         
         Args:
-            frequency (str): Investment frequency ('daily', 'weekly', 'monthly')
+            frequency: Investment frequency ('daily', 'weekly', or 'monthly')
         """
+        config = get_benchmark_config()
+        valid_frequencies = config.valid_frequencies
+        
+        if frequency not in valid_frequencies:
+            raise ValueError(f"Invalid frequency: {frequency}. Must be one of {valid_frequencies}")
+        
         self.frequency = frequency
+    
+    def _get_investment_dates(self, data: pd.DataFrame) -> pd.DatetimeIndex:
+        """
+        Get investment dates based on frequency.
+        
+        Args:
+            data: Price data DataFrame
+            
+        Returns:
+            DatetimeIndex of investment dates
+        """
+        all_dates = data.index
+        
+        if self.frequency == 'daily':
+            return all_dates
+        elif self.frequency == 'weekly':
+            # Invest on Mondays (weekday 0)
+            return all_dates[all_dates.weekday == 0]
+        elif self.frequency == 'monthly':
+            # Invest on first day of each month
+            return all_dates[all_dates.day == 1]
+        else:
+            raise ValueError(f"Invalid frequency: {self.frequency}")
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
         Calculate dollar cost averaging returns.
         
         Args:
-            data (pd.DataFrame): DataFrame with price data, must have 'Close' column
-            start_capital (float): Total capital to invest over the period.
+            data: Price data DataFrame with 'Close' column
+            start_capital: Starting capital amount
             
         Returns:
-            pd.Series: Series of cumulative returns
+            Portfolio value series over time
         """
-        if 'Close' not in data.columns:
-            raise ValueError("Data must contain 'Close' column")
+        self._validate_inputs(data, start_capital)
         
-        close = data['Close']
-        if not isinstance(close, pd.Series):
-            close = close.squeeze()
-        
-        is_all_nan = close.isnull().all()
-        if is_all_nan:
+        # Handle all NaN prices case
+        if 'Close' in data.columns and data['Close'].isna().all():
             return pd.Series(start_capital, index=data.index)
-
-        schedule = pd.Series(False, index=data.index)
-        if self.frequency == 'daily':
-            investment_days = data.index
-        elif self.frequency == 'weekly':
-            investment_days = data.resample('W').first().index
-        elif self.frequency == 'monthly':
-            investment_days = data.resample('MS').first().index
-        else:
-            raise ValueError("Invalid frequency. Must be 'daily', 'weekly', or 'monthly'")
         
-        valid_investment_days = investment_days.intersection(data.index)
+        prices = self._prepare_prices(data)
+        investment_dates = self._get_investment_dates(data)
         
-        if len(valid_investment_days) == 0:
+        # If no investment dates, return start capital
+        if len(investment_dates) == 0:
             return pd.Series(start_capital, index=data.index)
+        
+        # Calculate investment amount per period
+        investment_amount = start_capital / len(investment_dates)
+        
+        # Track shares and cash over time
+        shares = 0.0
+        cash = start_capital
+        portfolio_values = []
+        
+        for date in data.index:
+            if date in investment_dates and not pd.isna(prices[date]):
+                # Invest cash
+                shares_to_buy = investment_amount / prices[date]
+                shares += shares_to_buy
+                cash -= investment_amount
             
-        periodic_investment_amount = start_capital / len(valid_investment_days)
-        schedule.loc[valid_investment_days] = True
+            # Calculate portfolio value
+            portfolio_value = shares * prices[date] + cash
+            portfolio_values.append(portfolio_value)
+        
+        return pd.Series(portfolio_values, index=data.index)
 
-        investments = pd.Series(0.0, index=data.index)
-        investments.loc[schedule] = periodic_investment_amount
-        
-        shares_bought = (investments / close).fillna(0)
-        cumulative_shares = shares_bought.cumsum()
-        
-        cash_spent = investments.cumsum()
-        cash = start_capital - cash_spent
 
-        portfolio_value = cumulative_shares * close + cash
+# Convenience function for creating common benchmark combinations
+def create_standard_benchmarks(spy_symbol: str = None, dca_frequency: str = None) -> list[BaseBenchmark]:
+    """
+    Create a standard set of benchmarks for comparison.
+    
+    Args:
+        spy_symbol: Symbol for market benchmark. If None, uses config default.
+        dca_frequency: Frequency for dollar cost averaging. If None, uses config default.
         
-        return portfolio_value
+    Returns:
+        List of benchmark instances
+    """
+    config = get_benchmark_config()
+    
+    if spy_symbol is None:
+        spy_symbol = config.market_symbol
+    if dca_frequency is None:
+        dca_frequency = config.dca_frequency
+    
+    return [
+        BuyAndHold(),
+        SPYBuyAndHold(),
+        DollarCostAveraging(frequency=dca_frequency)
+    ]

@@ -40,14 +40,18 @@ def test_buy_and_hold_calculation(sample_price_data):
 def test_buy_and_hold_missing_close_column():
     """Test that BuyAndHold raises an error if 'Close' column is missing."""
     benchmark = BuyAndHold()
-    data = pd.DataFrame({'Open': [100]})
+    # Create with datetime index to avoid DatetimeIndex validation error
+    dates = pd.to_datetime(['2023-01-01'])
+    data = pd.DataFrame({'Open': [100]}, index=dates)
     with pytest.raises(ValueError, match="Data must contain 'Close' column"):
         benchmark.calculate_returns(data, 10000.0)
 
 def test_buy_and_hold_all_nan_prices():
     """Test that BuyAndHold raises an error if all prices are NaN."""
     benchmark = BuyAndHold()
-    data = pd.DataFrame({'Close': [np.nan, np.nan]})
+    # Create with datetime index to avoid DatetimeIndex validation error
+    dates = pd.to_datetime(['2023-01-01', '2023-01-02'])
+    data = pd.DataFrame({'Close': [np.nan, np.nan]}, index=dates)
     with pytest.raises(ValueError, match="All close prices are NaN"):
         benchmark.calculate_returns(data, 10000.0)
 
@@ -73,7 +77,11 @@ def test_spy_buy_and_hold_calculation(monkeypatch):
     monkeypatch.setattr(yf, 'download', MockYFinance().download)
 
     benchmark = SPYBuyAndHold()
-    dummy_data = pd.DataFrame(index=pd.to_datetime(['2023-01-01', '2023-01-04']))
+    # Create dummy data with Close column (even though SPY will use its own data)
+    dummy_data = pd.DataFrame(
+        {'Close': [100, 100]}, 
+        index=pd.to_datetime(['2023-01-01', '2023-01-04'])
+    )
     returns = benchmark.calculate_returns(dummy_data, 10000.0)
 
     assert isinstance(returns, pd.Series)
@@ -89,7 +97,10 @@ def test_spy_buy_and_hold_download_failure(monkeypatch):
 
     monkeypatch.setattr(yf, 'download', MockYFinance().download)
     benchmark = SPYBuyAndHold()
-    dummy_data = pd.DataFrame(index=pd.to_datetime(['2023-01-01', '2023-01-04']))
+    dummy_data = pd.DataFrame(
+        {'Close': [100, 100]}, 
+        index=pd.to_datetime(['2023-01-01', '2023-01-04'])
+    )
 
     with pytest.raises(ValueError, match="Could not download SPY data"):
         benchmark.calculate_returns(dummy_data, 10000.0)
@@ -104,7 +115,10 @@ def test_spy_buy_and_hold_all_nan_after_reindex(monkeypatch):
 
     monkeypatch.setattr(yf, 'download', MockYFinance().download)
     benchmark = SPYBuyAndHold()
-    dummy_data = pd.DataFrame(index=pd.to_datetime(['2023-01-01', '2023-01-04']))
+    dummy_data = pd.DataFrame(
+        {'Close': [100, 100]}, 
+        index=pd.to_datetime(['2023-01-01', '2023-01-04'])
+    )
 
     with pytest.raises(ValueError, match="All SPY close prices are NaN after alignment"):
         benchmark.calculate_returns(dummy_data, 10000.0)
@@ -134,11 +148,10 @@ def test_dca_daily(sample_price_data):
     assert np.isclose(returns.iloc[0], 10000)
     assert np.isclose(returns.iloc[-1], 10726.73, atol=1)
 
-def test_dca_invalid_frequency(sample_price_data):
+def test_dca_invalid_frequency():
     """Test that DCA raises an error for an invalid frequency."""
-    benchmark = DollarCostAveraging(frequency='yearly')
     with pytest.raises(ValueError, match="Invalid frequency"):
-        benchmark.calculate_returns(sample_price_data, 10000.0)
+        DollarCostAveraging(frequency='yearly')
 
 def test_dca_no_investment_days(sample_price_data):
     """Test DCA returns start capital if there are no investment days."""
@@ -151,6 +164,7 @@ def test_dca_no_investment_days(sample_price_data):
 def test_dca_all_nan_prices():
     """Test that DCA handles all NaN prices gracefully."""
     benchmark = DollarCostAveraging(frequency='monthly')
-    data = pd.DataFrame({'Close': [np.nan, np.nan]}, index=pd.to_datetime(['2023-01-01', '2023-01-02']))
+    dates = pd.to_datetime(['2023-01-01', '2023-01-02'])
+    data = pd.DataFrame({'Close': [np.nan, np.nan]}, index=dates)
     returns = benchmark.calculate_returns(data, 10000.0)
     assert (returns == 10000.0).all() 
