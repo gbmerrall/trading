@@ -1,10 +1,8 @@
 import pandas as pd
 import yfinance as yf
-import numpy as np
-from .interfaces import Benchmark
 
-class BuyAndHold(Benchmark):
-    """Simple buy and hold benchmark strategy."""
+class BuyAndHold:
+    """A benchmark that simulates a buy-and-hold strategy."""
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
@@ -19,19 +17,23 @@ class BuyAndHold(Benchmark):
         """
         if 'Close' not in data.columns:
             raise ValueError("Data must contain 'Close' column")
+        
         close = data['Close']
-        if isinstance(close, pd.DataFrame):
+        if not isinstance(close, pd.Series):
             close = close.squeeze()
-        if close.isnull().all():
+
+        is_all_nan = close.isnull().all()
+        if is_all_nan:
             raise ValueError("All close prices are NaN")
+            
         close = close.ffill().bfill()
         returns = close.pct_change(fill_method=None)
         cumulative_returns = (1 + returns).cumprod()
         cumulative_returns.iloc[0] = 1.0
         return start_capital * cumulative_returns
 
-class SPYBuyAndHold(Benchmark):
-    """SPY buy and hold benchmark strategy."""
+class SPYBuyAndHold:
+    """A benchmark that compares performance against a buy-and-hold of SPY."""
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
@@ -44,6 +46,7 @@ class SPYBuyAndHold(Benchmark):
         Returns:
             pd.Series: Series of cumulative returns
         """
+        # TODO: Consider caching this data to avoid repeated downloads
         spy_data = yf.download('SPY', 
                              start=data.index[0],
                              end=data.index[-1],
@@ -54,9 +57,11 @@ class SPYBuyAndHold(Benchmark):
             raise ValueError("Could not download SPY data or missing 'Close' column")
             
         close = spy_data['Close'].reindex(data.index).ffill().bfill()
-        if isinstance(close, pd.DataFrame):
+        if not isinstance(close, pd.Series):
             close = close.squeeze()
-        if close.isnull().all():
+
+        is_all_nan = close.isnull().all()
+        if is_all_nan:
             raise ValueError("All SPY close prices are NaN after alignment")
             
         spy_returns = close.pct_change(fill_method=None)
@@ -64,19 +69,22 @@ class SPYBuyAndHold(Benchmark):
         cumulative_returns.iloc[0] = 1.0
         return start_capital * cumulative_returns
 
-class DollarCostAveraging(Benchmark):
-    """Dollar cost averaging benchmark strategy."""
+class DollarCostAveraging:
+    """
+    A benchmark that simulates a dollar-cost averaging (DCA) strategy.
     
-    def __init__(self, frequency: str = 'monthly', amount: float = 1000.0):
+    This benchmark simulates investing a total of `start_capital` in equal portions
+    over a series of regular intervals (`frequency`) throughout the backtest period.
+    """
+    
+    def __init__(self, frequency: str = 'monthly'):
         """
         Initialize the strategy.
         
         Args:
             frequency (str): Investment frequency ('daily', 'weekly', 'monthly')
-            amount (float): Amount to invest each period
         """
         self.frequency = frequency
-        self.amount = amount
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
@@ -84,36 +92,49 @@ class DollarCostAveraging(Benchmark):
         
         Args:
             data (pd.DataFrame): DataFrame with price data, must have 'Close' column
-            start_capital (float): Initial capital to invest
+            start_capital (float): Total capital to invest over the period.
             
         Returns:
             pd.Series: Series of cumulative returns
         """
         if 'Close' not in data.columns:
             raise ValueError("Data must contain 'Close' column")
+        
         close = data['Close']
-        if isinstance(close, pd.DataFrame):
+        if not isinstance(close, pd.Series):
             close = close.squeeze()
-        if close.isnull().all():
-            raise ValueError("All close prices are NaN")
-        close = close.ffill().bfill()
-        close = close.replace([np.inf, -np.inf], np.nan)
+        
+        is_all_nan = close.isnull().all()
+        if is_all_nan:
+            return pd.Series(start_capital, index=data.index)
+
+        schedule = pd.Series(False, index=data.index)
         if self.frequency == 'daily':
-            schedule = pd.Series(True, index=data.index)
+            investment_days = data.index
         elif self.frequency == 'weekly':
-            schedule = pd.Series(False, index=data.index)
-            schedule[data.index.weekday == 0] = True  # Invest on Mondays
+            investment_days = data.resample('W').first().index
         elif self.frequency == 'monthly':
-            schedule = pd.Series(False, index=data.index)
-            schedule[data.index.day == 1] = True  # Invest on first day of month
+            investment_days = data.resample('MS').first().index
         else:
             raise ValueError("Invalid frequency. Must be 'daily', 'weekly', or 'monthly'")
+        
+        valid_investment_days = investment_days.intersection(data.index)
+        
+        if len(valid_investment_days) == 0:
+            return pd.Series(start_capital, index=data.index)
             
-        shares = pd.Series(0.0, index=data.index)
-        shares.loc[schedule] = self.amount / close.loc[schedule].replace(0, np.nan)
-        shares = shares.fillna(0)
+        periodic_investment_amount = start_capital / len(valid_investment_days)
+        schedule.loc[valid_investment_days] = True
+
+        investments = pd.Series(0.0, index=data.index)
+        investments.loc[schedule] = periodic_investment_amount
         
-        cumulative_shares = shares.cumsum()
-        portfolio_value = cumulative_shares * close
+        shares_bought = (investments / close).fillna(0)
+        cumulative_shares = shares_bought.cumsum()
         
-        return portfolio_value 
+        cash_spent = investments.cumsum()
+        cash = start_capital - cash_spent
+
+        portfolio_value = cumulative_shares * close + cash
+        
+        return portfolio_value
