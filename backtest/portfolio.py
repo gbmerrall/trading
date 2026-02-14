@@ -11,19 +11,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 from .validation import validate_positive_number, validate_integer, ValidationError
-
-# Hardcode constants to avoid config issues
-class TradingConstants:
-    PERCENT_MULTIPLIER = 100.0
-
-class ValidationLimits:
-    MIN_START_CAPITAL = 1.0
-    MAX_START_CAPITAL = 1e12
-    MAX_COMMISSION_RATE = 0.10
-    MIN_SHARES = 1
-    MAX_SHARES = 1_000_000
-    MIN_PRICE = 0.01
-    MAX_PRICE = 1_000_000.0
+from .constants import TradingConstants, ValidationLimits
 
 
 @dataclass

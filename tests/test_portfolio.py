@@ -387,8 +387,7 @@ def test_portfolio_workflow():
     portfolio.sell('GOOGL', 10, 2100.0, date2)  # Take some profits
     
     # Day 3: More price changes
-    date3 = pd.Timestamp('2023-01-03')
-    portfolio.update_all_prices({'AAPL': 160.0, 'GOOGL': 2050.0, 'MSFT': 310.0})
+    portfolio.update_all_prices({"AAPL": 160.0, "GOOGL": 2050.0, "MSFT": 310.0})
     
     # Check final state
     metrics = portfolio.get_performance_metrics()

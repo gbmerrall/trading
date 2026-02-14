@@ -5,37 +5,17 @@ import numpy as np
 from typing import Any, Optional
 import numbers
 
+from .constants import ValidationLimits, TradingConstants
+
 
 class ValidationError(ValueError):
     """Custom exception for validation errors."""
     pass
 
 
-# Import configuration after defining ValidationError to avoid circular imports
 def _get_validation_limits():
-    """Lazy import of validation limits to avoid circular dependencies."""
-    try:
-        from .config import ValidationLimits, TradingConstants
-        return ValidationLimits, TradingConstants
-    except ImportError:
-        # Fallback constants if config is not available
-        class _ValidationLimits:
-            MIN_DATA_POINTS = 2
-            MAX_PRICE_VARIATION_RATIO = 1000
-            MIN_START_CAPITAL = 1.0
-            MAX_START_CAPITAL = 1e12
-            MAX_COMMISSION_RATE = 0.10
-            MIN_CONSECUTIVE_DAYS = 1
-            MAX_CONSECUTIVE_DAYS = 252
-            MIN_SHARES = 1
-            MAX_SHARES = 1_000_000
-            MIN_PRICE = 0.01
-            MAX_PRICE = 1_000_000.0
-        
-        class _TradingConstants:
-            PERCENT_MULTIPLIER = 100.0
-            
-        return _ValidationLimits, _TradingConstants
+    """Get validation limits and trading constants."""
+    return ValidationLimits, TradingConstants
 
 
 def validate_dataframe(

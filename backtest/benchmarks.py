@@ -23,28 +23,23 @@ class BaseBenchmark(ABC):
     def _validate_inputs(self, data: pd.DataFrame, start_capital: float) -> None:
         """
         Validate inputs for benchmark calculations.
-        
+
         Args:
             data: Price data DataFrame
             start_capital: Starting capital amount
-            
+
         Raises:
-            ValueError: If validation fails (for test compatibility)
+            ValidationError: If validation fails
         """
-        try:
-            validate_positive_number(start_capital, "start_capital")
-            
-            # Check if data is DataFrame
-            if not isinstance(data, pd.DataFrame):
-                raise ValueError(f"Expected pandas DataFrame, got {type(data).__name__}")
-            
-            # Check for minimum data points
-            if len(data) < 1:
-                raise ValueError("DataFrame must have at least 1 row")
-                
-        except ValidationError as e:
-            # Convert ValidationError to ValueError for test compatibility
-            raise ValueError(str(e))
+        validate_positive_number(start_capital, "start_capital")
+
+        # Check if data is DataFrame
+        if not isinstance(data, pd.DataFrame):
+            raise ValidationError(f"Expected pandas DataFrame, got {type(data).__name__}")
+
+        # Check for minimum data points
+        if len(data) < 1:
+            raise ValidationError("DataFrame must have at least 1 row")
     
     def _validate_close_column(self, data: pd.DataFrame) -> None:
         """
@@ -54,34 +49,34 @@ class BaseBenchmark(ABC):
             data: Price data DataFrame
             
         Raises:
-            ValueError: If Close column is missing
+            ValidationError: If Close column is missing
         """
         if 'Close' not in data.columns:
-            raise ValueError("Data must contain 'Close' column")
+            raise ValidationError("Data must contain 'Close' column")
     
     def _prepare_prices(self, data: pd.DataFrame) -> pd.Series:
         """
         Prepare price data for calculations.
-        
+
         Args:
             data: Raw price data
-            
+
         Returns:
             Clean price series
-            
+
         Raises:
-            ValueError: If all prices are NaN
+            ValidationError: If all prices are NaN
         """
         self._validate_close_column(data)
-        prices = data['Close'].copy()
-        
+        prices = data["Close"].copy()
+
         # Check for all NaN values before any processing
         if prices.isna().all():
-            raise ValueError("All close prices are NaN")
-        
-        # Forward fill to handle missing values
-        prices = prices.ffill()
-        
+            raise ValidationError("All close prices are NaN")
+
+        # Forward fill to handle missing values, then backward fill for leading NaNs
+        prices = prices.ffill().bfill()
+
         return prices
     
     def _calculate_portfolio_value(self, prices: pd.Series, start_capital: float) -> pd.Series:
@@ -174,17 +169,17 @@ class SPYBuyAndHold(BaseBenchmark):
                 progress=False
             )
         except Exception as e:
-            raise ValueError(f"Failed to download SPY data: {str(e)}")
+            raise ValidationError(f"Failed to download SPY data: {str(e)}")
         
         if spy_data.empty:
-            raise ValueError("Could not download SPY data")
+            raise ValidationError("Could not download SPY data")
         
         # Align SPY data with input data dates
         spy_prices = spy_data['Close'].reindex(data.index, method='ffill')
         
         # Check if all prices are NaN after alignment
         if spy_prices.isna().all():
-            raise ValueError("All SPY close prices are NaN after alignment")
+            raise ValidationError("All SPY close prices are NaN after alignment")
         
         # Forward fill any remaining NaN values
         spy_prices = spy_prices.ffill()
@@ -210,7 +205,7 @@ class DollarCostAveraging(BaseBenchmark):
         valid_frequencies = config.valid_frequencies
         
         if frequency not in valid_frequencies:
-            raise ValueError(f"Invalid frequency: {frequency}. Must be one of {valid_frequencies}")
+            raise ValidationError(f"Invalid frequency: {frequency}. Must be one of {valid_frequencies}")
         
         self.frequency = frequency
     
@@ -235,7 +230,7 @@ class DollarCostAveraging(BaseBenchmark):
             # Invest on first day of each month
             return all_dates[all_dates.day == 1]
         else:
-            raise ValueError(f"Invalid frequency: {self.frequency}")
+            raise ValidationError(f"Invalid frequency: {self.frequency}")
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """

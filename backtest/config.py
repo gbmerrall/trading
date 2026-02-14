@@ -10,53 +10,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
-
-# ==================== TRADING CONSTANTS ====================
-
-class TradingConstants:
-    """Constants related to trading and financial markets."""
-    
-    # Market timing
-    TRADING_DAYS_PER_YEAR = 252
-    TRADING_DAYS_PER_MONTH = 21
-    TRADING_DAYS_PER_WEEK = 5
-    
-    # Common market symbols
-    DEFAULT_MARKET_BENCHMARK = 'SPY'
-    ALTERNATIVE_BENCHMARKS = ['QQQ', 'IWM', 'DIA']
-    
-    # Percentage calculations
-    PERCENT_MULTIPLIER = 100.0
-    BASIS_POINTS_MULTIPLIER = 10000.0
-    
-    # Default ratios
-    DEFAULT_CUMULATIVE_RETURN_BASE = 1.0
-    EXTREME_PRICE_VARIATION_THRESHOLD = 1000  # max/min price ratio
-
-
-# ==================== VALIDATION LIMITS ====================
-
-class ValidationLimits:
-    """Limits and thresholds for input validation."""
-    
-    # Portfolio limits
-    MAX_COMMISSION_RATE = 0.10  # 10% maximum commission rate
-    MIN_START_CAPITAL = 1.0     # Minimum starting capital
-    MAX_START_CAPITAL = 1e12    # Maximum starting capital (1 trillion)
-    
-    # Strategy limits
-    MIN_CONSECUTIVE_DAYS = 1
-    MAX_CONSECUTIVE_DAYS = TradingConstants.TRADING_DAYS_PER_YEAR
-    
-    # Position limits
-    MIN_SHARES = 1
-    MAX_SHARES = 1_000_000
-    MIN_PRICE = 0.01  # Minimum price (1 cent)
-    MAX_PRICE = 1_000_000.0  # Maximum price per share
-    
-    # Data quality thresholds
-    MAX_PRICE_VARIATION_RATIO = 1000  # Price max/min ratio threshold
-    MIN_DATA_POINTS = 2  # Minimum data points for backtesting
+from .constants import TradingConstants, ValidationLimits
 
 
 # ==================== FILE AND PATH CONFIGURATION ====================
@@ -175,9 +129,8 @@ class BenchmarkConfig:
 @dataclass
 class BacktestConfig:
     """Configuration for backtest execution."""
-    
+
     # Execution settings
-    start_capital: float = 10_000.0
     verbose: bool = True
     save_plots: bool = True
     save_data: bool = False
@@ -202,10 +155,7 @@ class BacktestConfig:
     
     def validate(self) -> None:
         """Validate backtest configuration."""
-        if self.start_capital <= 0:
-            raise ValueError("start_capital must be positive")
-        
-        if self.output_format not in ['png', 'jpg', 'svg', 'pdf']:
+        if self.output_format not in ["png", "jpg", "svg", "pdf"]:
             raise ValueError(f"Invalid output_format: {self.output_format}")
 
 

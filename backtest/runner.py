@@ -7,6 +7,7 @@ from .validation import (
     sanitize_file_path, ValidationError
 )
 from .config import get_backtest_config, get_portfolio_config, FileConfig, TradingConstants
+from .constants import ValidationLimits
 
 
 class BacktestRunnerImpl:
@@ -59,21 +60,19 @@ class BacktestRunnerImpl:
     def _validate_backtest_params(self, start_capital: float, output_file: Optional[str]) -> None:
         """
         Validate backtest parameters.
-        
+
         Args:
             start_capital: Starting capital amount
             output_file: Optional output file path
-            
+
         Raises:
             ValidationError: If validation fails
         """
-        portfolio_config = get_portfolio_config()
-        
         validate_positive_number(
-            start_capital, 
-            "start_capital", 
+            start_capital,
+            "start_capital",
             allow_zero=False,
-            max_value=portfolio_config.start_capital * 1000  # Reasonable upper limit
+            max_value=ValidationLimits.MAX_START_CAPITAL,
         )
         
         if output_file is not None:
@@ -220,11 +219,11 @@ class BacktestRunnerImpl:
         Raises:
             ValidationError: If validation or execution fails
         """
-        config = get_backtest_config()
-        
+        portfolio_config = get_portfolio_config()
+
         # Use configuration default if not provided
         if start_capital is None:
-            start_capital = config.start_capital
+            start_capital = portfolio_config.start_capital
             
         # Comprehensive input validation
         self._validate_data(data)
@@ -247,17 +246,18 @@ class BacktestRunnerImpl:
             
             portfolio = Portfolio(start_capital)
             trades = []
-            
+
             shares_held = 0
             entry_price = 0.0
+            entry_date = None
 
             # Event-driven backtesting loop
             for date, price in close_prices.items():
                 if pd.isna(price) or price <= 0:
                     continue  # Skip invalid prices
-                
-                buy_signal = signals.loc[date, 'buy'] if date in signals.index else False
-                sell_signal = signals.loc[date, 'sell'] if date in signals.index else False
+
+                buy_signal = signals.loc[date, "buy"] if date in signals.index else False
+                sell_signal = signals.loc[date, "sell"] if date in signals.index else False
 
                 # Trading logic with validation
                 if shares_held == 0 and buy_signal:
@@ -267,36 +267,40 @@ class BacktestRunnerImpl:
                         portfolio.process_day(date, price, buy_signal=True, shares=shares_to_buy)
                         shares_held = shares_to_buy
                         entry_price = price
-                        
+                        entry_date = date
+
                 elif shares_held > 0 and sell_signal:
                     # Sell entire position
                     portfolio.process_day(date, price, sell_signal=True, shares=shares_held)
                     pnl = (price - entry_price) * shares_held
                     trades.append({
-                        'entry_date': date,
-                        'entry': entry_price, 
-                        'exit': price, 
-                        'shares': shares_held,
-                        'pnl': pnl
+                        "entry_date": entry_date,
+                        "exit_date": date,
+                        "entry": entry_price,
+                        "exit": price,
+                        "shares": shares_held,
+                        "pnl": pnl,
                     })
                     shares_held = 0
                     entry_price = 0.0
+                    entry_date = None
                 else:
                     # Hold position
                     portfolio.process_day(date, price)
 
             # Close any remaining position at the last price
+            # Note: We don't call process_day again since the last iteration already did
             if shares_held > 0:
                 last_date = close_prices.index[-1]
                 last_price = close_prices.iloc[-1]
-                portfolio.process_day(last_date, last_price, sell_signal=True, shares=shares_held)
                 pnl = (last_price - entry_price) * shares_held
                 trades.append({
-                    'entry_date': last_date,
-                    'entry': entry_price, 
-                    'exit': last_price, 
-                    'shares': shares_held,
-                    'pnl': pnl
+                    "entry_date": entry_date,
+                    "exit_date": last_date,
+                    "entry": entry_price,
+                    "exit": last_price,
+                    "shares": shares_held,
+                    "pnl": pnl,
                 })
 
             # Calculate final results
@@ -327,7 +331,8 @@ class BacktestRunnerImpl:
                     raise ValidationError(f"Error calculating {bench_name} benchmark: {str(e)}") from e
             
             # Generate plot if requested
-            if output_file and config.save_plots:
+            backtest_config = get_backtest_config()
+            if output_file and backtest_config.save_plots:
                 self._plot_equity_curves(strategy_history, benchmark_returns, output_file)
             
             return {

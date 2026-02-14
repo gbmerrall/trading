@@ -1,8 +1,7 @@
 import yfinance as yf
-import pandas as pd
 import os
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Dict, Any
 import warnings
 
 # Ignore the specific pandas FutureWarning about downcasting
@@ -18,7 +17,7 @@ from backtest.strategy import ConsecutiveDaysStrategy
 from backtest.benchmarks import create_standard_benchmarks
 from backtest.config import (
     ConfigFactory, set_config, get_config, FileConfig,
-    load_config_from_environment, save_config_to_file
+    save_config_to_file
 )
 
 def print_metrics(title: str, metrics: Dict[str, Any]):
@@ -138,8 +137,8 @@ def run_backtest_example(symbol: str, config_name: str):
         print(f"Period: {start_date} to {end_date}")
         
         results = runner.run(
-            data, 
-            start_capital=config.backtest.start_capital,
+            data,
+            start_capital=config.portfolio.start_capital,
             output_file=str(output_file) if config.backtest.save_plots else None
         )
 

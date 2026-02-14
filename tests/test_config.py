@@ -130,24 +130,19 @@ class TestBacktestConfig:
     def test_default_values(self):
         """Test default backtest configuration values."""
         config = BacktestConfig()
-        assert config.start_capital == 10_000.0
         assert config.verbose is True
         assert config.save_plots is True
         assert config.plot_title == "Equity Curves"
-        assert config.output_format == 'png'
-    
+        assert config.output_format == "png"
+
     def test_validation_success(self):
         """Test successful validation."""
-        config = BacktestConfig(start_capital=25000.0, output_format='svg')
+        config = BacktestConfig(output_format="svg")
         config.validate()  # Should not raise
-    
+
     def test_validation_failure(self):
         """Test validation failures."""
-        config = BacktestConfig(start_capital=-5000.0)
-        with pytest.raises(ValueError):
-            config.validate()
-        
-        config = BacktestConfig(output_format='gif')
+        config = BacktestConfig(output_format="gif")
         with pytest.raises(ValueError):
             config.validate()
 

@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import yfinance as yf
 import numpy as np
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 # Add project root to the Python path
 import sys
