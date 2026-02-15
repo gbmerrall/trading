@@ -22,11 +22,12 @@ The core backtesting loop (`backtest/runner.py`) processes historical data day-b
 ```
 backtest/
 ├── portfolio.py      # Portfolio simulation engine (multi-asset support)
-├── strategy.py       # Strategy implementations (e.g., ConsecutiveDaysStrategy)
+├── strategy.py       # BaseStrategy ABC and strategy implementations
 ├── benchmarks.py     # Benchmark strategies (BuyAndHold, SPYBuyAndHold, DCA)
 ├── runner.py         # BacktestRunnerImpl - orchestrates the backtest
 ├── config.py         # Centralized configuration system
-└── validation.py     # Input validation utilities
+├── validation.py     # Input validation utilities
+└── constants.py      # Shared constants (ValidationLimits, TradingConstants)
 ```
 
 ### Key Design Patterns
@@ -38,8 +39,11 @@ backtest/
 - Individual component access: `get_portfolio_config()`, `get_strategy_config()`, etc.
 
 **Base Classes**: Use inheritance to eliminate duplication:
-- `BaseBenchmark` provides common validation and calculation methods
-- All benchmarks inherit and implement `calculate_returns()`
+- `BaseStrategy` - Abstract base class for all strategies (required for new strategies)
+  - Enforces `generate_signals()`, `get_parameters()`, `set_parameters()`, `warmup_period`
+- `BaseBenchmark` - Abstract base class for benchmarks
+  - Provides common validation and calculation methods
+  - All benchmarks inherit and implement `calculate_returns()`
 
 **Validation Pattern**: All external inputs are validated using `validation.py`:
 - Raises `ValidationError` (subclass of `ValueError`) with clear messages
@@ -100,6 +104,7 @@ From `.cursor/rules/development.mdc`:
 - Always check for linter errors with 'ruff' after edits
 - Parametrize tests for different inputs
 - Test edge cases: missing data, market gaps, boundary conditions
+- For strategies: verify warmup period prevents early signals, test signal shift by 1 day
 
 ## Data Flow
 
@@ -140,19 +145,32 @@ All benchmarks must:
 ## Critical Constraints
 
 1. **Pipenv Environment**: Always run Python commands inside the pipenv virtual environment. Check with `which python` first.
-2. **Test Coverage**: Aim for 75%+ coverage. Run coverage reports periodically.
+2. **Test Coverage**: Aim for 75%+ coverage. Run coverage reports periodically with `pytest --cov=backtest -v`.
 3. **Input Validation**: Validate all external inputs at system boundaries (user input, data loading).
 4. **No Over-Engineering**: Keep solutions simple. Don't add features beyond requirements.
 5. **Google Python Style Guide**: 100-char line limit, sorted imports (stdlib → 3rd party → local), f-strings only with placeholders.
 
+## Dependencies
+
+- **Core**: `pandas`, `numpy`, `yfinance` (market data), `plotly` + `kaleido` (visualization)
+- **Technical Analysis**: `ta` library for indicators (RSI, MACD, Bollinger Bands, ATR, etc.)
+- **Testing**: `pytest`, `pytest-cov`
+- **Linting**: `ruff`
+
 ## Adding New Components
 
 ### Adding a New Strategy
-1. Create class with `generate_signals(data: pd.DataFrame) -> pd.DataFrame` method
-2. Return DataFrame with 'buy' and 'sell' boolean columns
-3. Validate inputs using `validate_dataframe()`, `validate_price_data()`
-4. Write tests FIRST covering edge cases
-5. Add configuration parameters to `StrategyConfig` if needed
+1. **Write tests FIRST** (TDD is mandatory)
+2. Inherit from `BaseStrategy` abstract base class
+3. Implement required methods:
+   - `generate_signals(data: pd.DataFrame) -> pd.DataFrame` - returns DataFrame with 'buy'/'sell' boolean columns
+   - `get_parameters() -> Dict[str, Any]` - returns current strategy parameters
+   - `set_parameters(params: Dict[str, Any])` - updates parameters dynamically (re-validate after setting)
+   - `warmup_period` property - returns minimum bars needed before signals are valid (e.g., for RSI(14), return 14)
+4. Validate inputs using `validate_dataframe()`, `validate_price_data()`
+5. Shift signals by 1 day (`signals.shift(1).fillna(False)`) to prevent look-ahead bias
+6. Use the `ta` library for technical indicators (RSI, MACD, Bollinger Bands, etc.)
+7. Strategy parameters should have constructor defaults; `StrategyConfig` integration is optional
 
 ### Adding a New Benchmark
 1. Inherit from `BaseBenchmark`
