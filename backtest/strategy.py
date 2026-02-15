@@ -1644,3 +1644,131 @@ class MomentumStrategy(BaseStrategy):
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
+
+
+class VolatilityStrategy(BaseStrategy):
+    """
+    Volatility breakout strategy using Average True Range (ATR).
+
+    Generates buy signals when price breaks above recent high during high volatility periods,
+    and sell signals when price breaks below recent low during high volatility periods.
+
+    ATR measures market volatility, helping identify periods when breakouts are more likely
+    to be genuine rather than false signals in low-volatility sideways markets.
+    """
+
+    def __init__(self, atr_period: int = 14, atr_multiplier: float = 2.0, breakout_period: int = 20):
+        """
+        Initialize volatility strategy.
+
+        Args:
+            atr_period: Period for ATR calculation (default: 14)
+            atr_multiplier: Multiplier for ATR threshold (default: 2.0)
+                           ATR must exceed (mean ATR * multiplier) for high volatility
+            breakout_period: Period for high/low breakout detection (default: 20)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        self.atr_period = atr_period
+        self.atr_multiplier = atr_multiplier
+        self.breakout_period = breakout_period
+        self._validate_parameters()
+
+    def _validate_parameters(self):
+        """Validate strategy parameters."""
+        validate_integer(self.atr_period, "atr_period", min_value=1)
+        validate_positive_number(self.atr_multiplier, "atr_multiplier")
+        validate_integer(self.breakout_period, "breakout_period", min_value=1)
+
+    @property
+    def warmup_period(self) -> int:
+        """Return the warmup period (max of ATR and breakout periods)."""
+        return max(self.atr_period, self.breakout_period)
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """Return current strategy parameters."""
+        return {
+            "atr_period": self.atr_period,
+            "atr_multiplier": self.atr_multiplier,
+            "breakout_period": self.breakout_period
+        }
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters.
+
+        Args:
+            params: Dictionary of parameter names and values
+
+        Raises:
+            ValidationError: If new parameters are invalid
+        """
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        self._validate_parameters()
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate trading signals based on ATR volatility and price breakouts.
+
+        Buy when: price breaks above recent high AND ATR indicates high volatility
+        Sell when: price breaks below recent low AND ATR indicates high volatility
+
+        Args:
+            data: DataFrame with DatetimeIndex and 'High', 'Low', 'Close' columns
+
+        Returns:
+            DataFrame with same index and 'buy'/'sell' boolean columns
+
+        Raises:
+            ValidationError: If data is invalid or insufficient
+        """
+        validate_dataframe(data, required_columns=['High', 'Low', 'Close'])
+
+        # Validate each price column
+        for column in ['High', 'Low', 'Close']:
+            validate_price_data(data, column=column)
+
+        if len(data) < self.warmup_period:
+            raise ValidationError(
+                f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
+            )
+
+        try:
+            signals = pd.DataFrame(index=data.index)
+            close_prices = data['Close']
+
+            # Calculate ATR
+            atr_indicator = ta.volatility.AverageTrueRange(
+                high=data['High'],
+                low=data['Low'],
+                close=close_prices,
+                window=self.atr_period
+            )
+            atr = atr_indicator.average_true_range()
+
+            # Calculate ATR threshold for high volatility
+            # Use rolling mean ATR to adapt to changing market conditions
+            mean_atr = atr.rolling(window=self.atr_period).mean()
+            high_volatility = atr > (mean_atr * self.atr_multiplier)
+
+            # Calculate breakout levels
+            highest_high = data['High'].rolling(window=self.breakout_period).max()
+            lowest_low = data['Low'].rolling(window=self.breakout_period).min()
+
+            # Generate signals: breakout + high volatility
+            # Buy when close breaks above recent high during high volatility
+            signals['buy'] = (close_prices > highest_high.shift(1)) & high_volatility
+
+            # Sell when close breaks below recent low during high volatility
+            signals['sell'] = (close_prices < lowest_low.shift(1)) & high_volatility
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
