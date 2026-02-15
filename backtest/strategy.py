@@ -980,3 +980,124 @@ class ParabolicSARStrategy(BaseStrategy):
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
+
+
+class BreakoutStrategy(BaseStrategy):
+    """
+    A strategy that buys when price exceeds the N-day high (breakout)
+    and sells when price breaks below the N-day low (breakdown).
+    """
+
+    def __init__(self, lookback_period: int = 20):
+        """
+        Initialize the Breakout strategy.
+
+        Args:
+            lookback_period: Number of days to look back for high/low (default 20)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        validate_integer(
+            lookback_period,
+            "lookback_period",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+
+        self.lookback_period = lookback_period
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'lookback_period' parameter
+        """
+        return {"lookback_period": self.lookback_period}
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing 'lookback_period' key
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "lookback_period" in params:
+            lookback_period = params["lookback_period"]
+            validate_integer(
+                lookback_period,
+                "lookback_period",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.lookback_period = lookback_period
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            The lookback_period parameter
+        """
+        return self.lookback_period
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on price breakouts.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close' column
+                  with DatetimeIndex and at least lookback_period rows
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close'],
+            min_rows=self.lookback_period
+        )
+        validate_price_data(data, 'Close')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            close_prices = data['Close']
+
+            # Calculate rolling high and low over lookback period
+            rolling_high = close_prices.rolling(
+                window=self.lookback_period,
+                min_periods=self.lookback_period
+            ).max()
+            rolling_low = close_prices.rolling(
+                window=self.lookback_period,
+                min_periods=self.lookback_period
+            ).min()
+
+            # Buy signal: price exceeds the N-day high (breakout)
+            # Compare current price to previous period's high
+            signals['buy'] = close_prices > rolling_high.shift(1)
+
+            # Sell signal: price breaks below the N-day low (breakdown)
+            # Compare current price to previous period's low
+            signals['sell'] = close_prices < rolling_low.shift(1)
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
