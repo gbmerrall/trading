@@ -1399,3 +1399,140 @@ class FibonacciRetracementStrategy(BaseStrategy):
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
+
+
+class MeanReversionStrategy(BaseStrategy):
+    """
+    Mean reversion strategy combining RSI and Bollinger Bands.
+
+    Generates buy signals when RSI is oversold AND price is below the lower Bollinger Band,
+    anticipating a reversion to the mean. Generates sell signals when RSI is overbought AND
+    price is above the upper Bollinger Band.
+
+    This composite strategy requires both conditions to be met simultaneously, reducing
+    false signals compared to using either indicator alone.
+    """
+
+    def __init__(
+        self,
+        rsi_period: int = 14,
+        rsi_lower: int = 30,
+        rsi_upper: int = 70,
+        bb_period: int = 20,
+        bb_std: float = 2.0
+    ):
+        """
+        Initialize mean reversion strategy.
+
+        Args:
+            rsi_period: Period for RSI calculation (default: 14)
+            rsi_lower: Lower RSI threshold for oversold condition (default: 30)
+            rsi_upper: Upper RSI threshold for overbought condition (default: 70)
+            bb_period: Period for Bollinger Bands calculation (default: 20)
+            bb_std: Standard deviation multiplier for Bollinger Bands (default: 2.0)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        self.rsi_period = rsi_period
+        self.rsi_lower = rsi_lower
+        self.rsi_upper = rsi_upper
+        self.bb_period = bb_period
+        self.bb_std = bb_std
+        self._validate_parameters()
+
+    def _validate_parameters(self):
+        """Validate strategy parameters."""
+        validate_integer(self.rsi_period, "rsi_period", min_value=1)
+        validate_integer(self.bb_period, "bb_period", min_value=1)
+        validate_positive_number(self.bb_std, "bb_std")
+
+        if not 0 <= self.rsi_lower <= 100:
+            raise ValidationError("rsi_lower must be between 0 and 100")
+        if not 0 <= self.rsi_upper <= 100:
+            raise ValidationError("rsi_upper must be between 0 and 100")
+        if self.rsi_lower >= self.rsi_upper:
+            raise ValidationError("rsi_lower must be less than rsi_upper")
+
+    @property
+    def warmup_period(self) -> int:
+        """Return the warmup period (max of RSI and BB periods)."""
+        return max(self.rsi_period, self.bb_period)
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """Return current strategy parameters."""
+        return {
+            "rsi_period": self.rsi_period,
+            "rsi_lower": self.rsi_lower,
+            "rsi_upper": self.rsi_upper,
+            "bb_period": self.bb_period,
+            "bb_std": self.bb_std
+        }
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters.
+
+        Args:
+            params: Dictionary of parameter names and values
+
+        Raises:
+            ValidationError: If new parameters are invalid
+        """
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        self._validate_parameters()
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate trading signals combining RSI and Bollinger Bands.
+
+        Buy when: RSI < rsi_lower AND price < lower Bollinger Band
+        Sell when: RSI > rsi_upper AND price > upper Bollinger Band
+
+        Args:
+            data: DataFrame with DatetimeIndex and 'Close' column
+
+        Returns:
+            DataFrame with same index and 'buy'/'sell' boolean columns
+
+        Raises:
+            ValidationError: If data is invalid or insufficient
+        """
+        validate_dataframe(data)
+        validate_price_data(data, column='Close')
+
+        if len(data) < self.warmup_period:
+            raise ValidationError(
+                f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
+            )
+
+        try:
+            signals = pd.DataFrame(index=data.index)
+            close_prices = data['Close']
+
+            # Calculate RSI
+            rsi_indicator = ta.momentum.RSIIndicator(close=close_prices, window=self.rsi_period)
+            rsi = rsi_indicator.rsi()
+
+            # Calculate Bollinger Bands
+            bb_indicator = ta.volatility.BollingerBands(
+                close=close_prices,
+                window=self.bb_period,
+                window_dev=self.bb_std
+            )
+            lower_band = bb_indicator.bollinger_lband()
+            upper_band = bb_indicator.bollinger_hband()
+
+            # Generate signals: both conditions must be true
+            signals['buy'] = (rsi < self.rsi_lower) & (close_prices < lower_band)
+            signals['sell'] = (rsi > self.rsi_upper) & (close_prices > upper_band)
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
