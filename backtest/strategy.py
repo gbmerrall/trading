@@ -1772,3 +1772,134 @@ class VolatilityStrategy(BaseStrategy):
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
+
+
+class EnsembleStrategy(BaseStrategy):
+    """
+    Ensemble strategy that aggregates signals from multiple sub-strategies.
+
+    Combines signals from multiple strategies using majority voting. A buy or sell signal
+    is generated only when at least min_agreement strategies agree.
+
+    This approach reduces false signals by requiring consensus, while still capturing
+    strong opportunities identified by multiple independent strategies.
+    """
+
+    def __init__(self, strategies: list, min_agreement: int = 1):
+        """
+        Initialize ensemble strategy.
+
+        Args:
+            strategies: List of BaseStrategy instances to aggregate
+            min_agreement: Minimum number of strategies that must agree for a signal
+                          (default: 1 = any strategy can trigger signal)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        self.strategies = strategies if strategies else []
+        self.min_agreement = min_agreement
+        self._validate_parameters()
+
+    def _validate_parameters(self):
+        """Validate strategy parameters."""
+        if not self.strategies or len(self.strategies) == 0:
+            raise ValidationError("Ensemble strategy requires at least one strategy")
+
+        if not isinstance(self.strategies, list):
+            raise ValidationError("strategies must be a list")
+
+        for i, strategy in enumerate(self.strategies):
+            if not isinstance(strategy, BaseStrategy):
+                raise ValidationError(
+                    f"Strategy at index {i} must inherit from BaseStrategy"
+                )
+
+        if not isinstance(self.min_agreement, int) or self.min_agreement < 1:
+            raise ValidationError("min_agreement must be an integer >= 1")
+
+        if self.min_agreement > len(self.strategies):
+            raise ValidationError(
+                f"min_agreement ({self.min_agreement}) cannot exceed number of "
+                f"strategies ({len(self.strategies)})"
+            )
+
+    @property
+    def warmup_period(self) -> int:
+        """Return the warmup period (max of all sub-strategies)."""
+        return max(strategy.warmup_period for strategy in self.strategies)
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """Return current strategy parameters."""
+        return {
+            "num_strategies": len(self.strategies),
+            "min_agreement": self.min_agreement,
+            "strategy_names": [type(s).__name__ for s in self.strategies]
+        }
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters.
+
+        Note: Can only update min_agreement. Sub-strategies are immutable.
+
+        Args:
+            params: Dictionary of parameter names and values
+
+        Raises:
+            ValidationError: If new parameters are invalid
+        """
+        if "min_agreement" in params:
+            self.min_agreement = params["min_agreement"]
+            self._validate_parameters()
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate trading signals by aggregating sub-strategy signals.
+
+        Buy when: At least min_agreement strategies generate buy signals
+        Sell when: At least min_agreement strategies generate sell signals
+
+        Args:
+            data: DataFrame with DatetimeIndex and required columns for sub-strategies
+
+        Returns:
+            DataFrame with same index and 'buy'/'sell' boolean columns
+
+        Raises:
+            ValidationError: If data is invalid or insufficient
+        """
+        validate_dataframe(data)
+
+        if len(data) < self.warmup_period:
+            raise ValidationError(
+                f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
+            )
+
+        try:
+            # Generate signals from each sub-strategy
+            all_buy_signals = []
+            all_sell_signals = []
+
+            for strategy in self.strategies:
+                sub_signals = strategy.generate_signals(data)
+                all_buy_signals.append(sub_signals['buy'])
+                all_sell_signals.append(sub_signals['sell'])
+
+            # Aggregate signals using majority voting
+            # Count how many strategies voted for each signal
+            buy_votes = pd.DataFrame(all_buy_signals).T.sum(axis=1)
+            sell_votes = pd.DataFrame(all_sell_signals).T.sum(axis=1)
+
+            # Generate final signals based on min_agreement threshold
+            signals = pd.DataFrame(index=data.index)
+            signals['buy'] = buy_votes >= self.min_agreement
+            signals['sell'] = sell_votes >= self.min_agreement
+
+            # Note: Individual strategies already shift their signals,
+            # so no additional shifting needed here
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
