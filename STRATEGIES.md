@@ -25,13 +25,19 @@
 
 None remaining - all technical indicator strategies completed!
 
+## Implemented: Price Action Strategies
+
+- [x] **Simple breakout**: Enters a trade when the price exceeds an N-day high or low, anticipating
+  trend continuation. Class: `BreakoutStrategy`.
+- [x] **Gaps**: Exploits overnight price discontinuities, trading the gap fill or continuation.
+  Class: `GapStrategy` (requires Open column).
+- [x] **Fibonacci retracements**: Identifies potential support and resistance levels by measuring
+  retracement of a prior price move at Fibonacci ratios (38.2%, 50%, 61.8%).
+  Class: `FibonacciRetracementStrategy` (requires High/Low columns).
+
 ## Planned: Price Action Strategies
 
-- [ ] **Simple breakout**: Enters a trade when the price exceeds an N-day high or low, anticipating
-  trend continuation.
-- [ ] **Gaps**: Exploits overnight price discontinuities, trading the gap fill or continuation.
-- [ ] **Fibonacci retracements**: Identifies potential support and resistance levels by measuring
-  retracement of a prior price move at Fibonacci ratios (38.2%, 50%, 61.8%).
+None remaining - all price action strategies completed!
 
 ## Planned: Composite Strategies
 

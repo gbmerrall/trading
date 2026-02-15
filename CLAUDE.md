@@ -176,12 +176,19 @@ All benchmarks must:
 7. Strategy parameters should have constructor defaults; `StrategyConfig` integration is optional
 
 **Implemented Strategies:**
+
+*Technical Indicators:*
 - `ConsecutiveDaysStrategy` - Buy after N down days, sell after N up days
 - `MovingAverageCrossoverStrategy` - Golden/death cross on MA crossovers
 - `RSIStrategy` - Buy oversold, sell overbought based on RSI
 - `MACDStrategy` - Buy/sell on MACD line crossovers
 - `BollingerBandsStrategy` - Mean reversion on Bollinger Band touches
-- `ParabolicSARStrategy` - Trend following with Parabolic SAR (requires High/Low columns)
+- `ParabolicSARStrategy` - Trend following with Parabolic SAR (requires High/Low)
+
+*Price Action:*
+- `BreakoutStrategy` - Breakout on N-day high, breakdown on N-day low
+- `GapStrategy` - Gap trading (requires Open column)
+- `FibonacciRetracementStrategy` - Support/resistance at Fib levels (requires High/Low)
 
 ### Adding a New Benchmark
 1. Inherit from `BaseBenchmark`
