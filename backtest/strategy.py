@@ -1536,3 +1536,111 @@ class MeanReversionStrategy(BaseStrategy):
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
+
+
+class MomentumStrategy(BaseStrategy):
+    """
+    Momentum strategy using Rate of Change (ROC) indicator.
+
+    Generates buy signals when ROC exceeds a positive threshold (strong upward momentum)
+    and sell signals when ROC falls below a negative threshold (strong downward momentum).
+
+    ROC measures the percentage change in price over a specified period, making it
+    effective for identifying trending markets and momentum shifts.
+    """
+
+    def __init__(self, roc_period: int = 12, roc_threshold: float = 0.05):
+        """
+        Initialize momentum strategy.
+
+        Args:
+            roc_period: Period for ROC calculation (default: 12)
+            roc_threshold: ROC threshold for signal generation (default: 0.05 = 5%)
+                          Buy when ROC > threshold, sell when ROC < -threshold
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        self.roc_period = roc_period
+        self.roc_threshold = roc_threshold
+        self._validate_parameters()
+
+    def _validate_parameters(self):
+        """Validate strategy parameters."""
+        validate_integer(self.roc_period, "roc_period", min_value=1)
+        validate_positive_number(self.roc_threshold, "roc_threshold")
+
+    @property
+    def warmup_period(self) -> int:
+        """Return the warmup period (ROC period)."""
+        return self.roc_period
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """Return current strategy parameters."""
+        return {
+            "roc_period": self.roc_period,
+            "roc_threshold": self.roc_threshold
+        }
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters.
+
+        Args:
+            params: Dictionary of parameter names and values
+
+        Raises:
+            ValidationError: If new parameters are invalid
+        """
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        self._validate_parameters()
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate trading signals based on Rate of Change (ROC).
+
+        Buy when: ROC > threshold (positive momentum)
+        Sell when: ROC < -threshold (negative momentum)
+
+        Args:
+            data: DataFrame with DatetimeIndex and 'Close' column
+
+        Returns:
+            DataFrame with same index and 'buy'/'sell' boolean columns
+
+        Raises:
+            ValidationError: If data is invalid or insufficient
+        """
+        validate_dataframe(data)
+        validate_price_data(data, column='Close')
+
+        if len(data) < self.warmup_period:
+            raise ValidationError(
+                f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
+            )
+
+        try:
+            signals = pd.DataFrame(index=data.index)
+            close_prices = data['Close']
+
+            # Calculate ROC - returns percentage change (0-100 scale)
+            roc_indicator = ta.momentum.ROCIndicator(close=close_prices, window=self.roc_period)
+            roc = roc_indicator.roc()
+
+            # Convert threshold to percentage (0-100 scale) for comparison with ROC
+            # ROC in ta library returns values like 5.0 for 5% change
+            threshold_pct = self.roc_threshold * 100
+
+            # Generate signals based on ROC thresholds
+            signals['buy'] = roc > threshold_pct
+            signals['sell'] = roc < -threshold_pct
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
