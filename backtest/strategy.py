@@ -203,5 +203,152 @@ class ConsecutiveDaysStrategy(BaseStrategy):
             
         except Exception as e:
             raise ValidationError(f"Error generating signals: {str(e)}") from e
-        
+
+        return signals
+
+
+class MovingAverageCrossoverStrategy(BaseStrategy):
+    """
+    A strategy that buys when a short-term moving average crosses above a long-term
+    moving average (golden cross) and sells on the reverse crossover (death cross).
+    """
+
+    def __init__(self, short_window: int = 20, long_window: int = 50):
+        """
+        Initialize the Moving Average Crossover strategy.
+
+        Args:
+            short_window: Period for short-term moving average (default 20)
+            long_window: Period for long-term moving average (default 50)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        validate_integer(
+            short_window,
+            "short_window",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+        validate_integer(
+            long_window,
+            "long_window",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+
+        if short_window >= long_window:
+            raise ValidationError(
+                f"short_window ({short_window}) must be less than long_window ({long_window})"
+            )
+
+        self.short_window = short_window
+        self.long_window = long_window
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'short_window' and 'long_window' parameters
+        """
+        return {"short_window": self.short_window, "long_window": self.long_window}
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing 'short_window' and/or 'long_window' keys
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "short_window" in params:
+            short_window = params["short_window"]
+            validate_integer(
+                short_window,
+                "short_window",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.short_window = short_window
+
+        if "long_window" in params:
+            long_window = params["long_window"]
+            validate_integer(
+                long_window,
+                "long_window",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.long_window = long_window
+
+        # Re-validate relationship after updates
+        if self.short_window >= self.long_window:
+            raise ValidationError(
+                f"short_window ({self.short_window}) must be less than "
+                f"long_window ({self.long_window})"
+            )
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            The long_window parameter, as that's the longest lookback period
+        """
+        return self.long_window
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on moving average crossovers.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close' column
+                  with DatetimeIndex and at least long_window rows
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close'],
+            min_rows=self.long_window
+        )
+        validate_price_data(data, 'Close')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            # Calculate moving averages using simple rolling mean
+            close_prices = data['Close']
+            short_ma = close_prices.rolling(window=self.short_window, min_periods=self.short_window).mean()
+            long_ma = close_prices.rolling(window=self.long_window, min_periods=self.long_window).mean()
+
+            # Detect crossovers
+            # Golden cross: short MA crosses above long MA (buy signal)
+            # Previous day: short_ma <= long_ma, Current day: short_ma > long_ma
+            golden_cross = (short_ma > long_ma) & (short_ma.shift(1) <= long_ma.shift(1))
+            signals['buy'] = golden_cross
+
+            # Death cross: short MA crosses below long MA (sell signal)
+            # Previous day: short_ma >= long_ma, Current day: short_ma < long_ma
+            death_cross = (short_ma < long_ma) & (short_ma.shift(1) >= long_ma.shift(1))
+            signals['sell'] = death_cross
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
         return signals 
