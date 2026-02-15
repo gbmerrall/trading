@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "98230d66ae65",
+  "session_id": "5c6a8a5d-662e-4b2b-922a-0a78c670bf8c",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-15T00:28:35.696687Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backtest/strategy.py"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "c7dcb9bf-a785-4286-9e45-7275ad119b05",
+  "token_usage": {
+    "input_tokens": 190,
+    "cache_creation_tokens": 178132,
+    "cache_read_tokens": 2205004,
+    "output_tokens": 4942,
+    "api_call_count": 34
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-15T00:28:35.439378Z",
+    "agent_lines": 112,
+    "human_added": 410,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 523,
+    "agent_percentage": 21.414913957934992
+  },
+  "transcript_path": ".claude/projects/-Users-graeme-Code-trading/5c6a8a5d-662e-4b2b-922a-0a78c670bf8c.jsonl"
+}
