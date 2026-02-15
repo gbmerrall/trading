@@ -168,9 +168,20 @@ All benchmarks must:
    - `set_parameters(params: Dict[str, Any])` - updates parameters dynamically (re-validate after setting)
    - `warmup_period` property - returns minimum bars needed before signals are valid (e.g., for RSI(14), return 14)
 4. Validate inputs using `validate_dataframe()`, `validate_price_data()`
+   - Most strategies require: `'Close'` column
+   - Some strategies require: `'Close'`, `'High'`, `'Low'` (e.g., ParabolicSAR)
+   - Validate all required columns with `validate_dataframe(data, required_columns=[...])`
 5. Shift signals by 1 day (`signals.shift(1).fillna(False)`) to prevent look-ahead bias
-6. Use the `ta` library for technical indicators (RSI, MACD, Bollinger Bands, etc.)
+6. Use the `ta` library for technical indicators (RSI, MACD, Bollinger Bands, ATR, etc.)
 7. Strategy parameters should have constructor defaults; `StrategyConfig` integration is optional
+
+**Implemented Strategies:**
+- `ConsecutiveDaysStrategy` - Buy after N down days, sell after N up days
+- `MovingAverageCrossoverStrategy` - Golden/death cross on MA crossovers
+- `RSIStrategy` - Buy oversold, sell overbought based on RSI
+- `MACDStrategy` - Buy/sell on MACD line crossovers
+- `BollingerBandsStrategy` - Mean reversion on Bollinger Band touches
+- `ParabolicSARStrategy` - Trend following with Parabolic SAR (requires High/Low columns)
 
 ### Adding a New Benchmark
 1. Inherit from `BaseBenchmark`
