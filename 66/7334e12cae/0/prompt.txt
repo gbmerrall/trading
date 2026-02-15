@@ -1,0 +1,29 @@
+please review @STRATEGIES.md, @CLAUDE.md and @IMPLEMENTATION_PLAN.md  and examine code to identify any postential issues and gaps prior to implemenation
+
+---
+
+please update @STRATEGIES.md and @IMPLEMENTATION_PLAN.md to reflect your findings
+
+---
+
+what other questions needed resolving?
+
+---
+
+does @CLAUDE.md need updating yet?
+
+---
+
+should we use pydantic instead of custom validation in @backtest/validation.py ?
+
+---
+
+Please implement "Part 1: Architecture Refactoring"
+
+---
+
+OK you can now continue. Please ensure you commit as you go
+
+---
+
+does @CLAUDE.md need updating?
