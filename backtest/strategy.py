@@ -2,8 +2,15 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict
 
 import pandas as pd
+import ta
 
-from .validation import validate_dataframe, validate_integer, validate_price_data, ValidationError
+from .validation import (
+    validate_dataframe,
+    validate_integer,
+    validate_positive_number,
+    validate_price_data,
+    ValidationError
+)
 from .config import get_strategy_config, ValidationLimits
 
 
@@ -344,6 +351,336 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
             # Previous day: short_ma >= long_ma, Current day: short_ma < long_ma
             death_cross = (short_ma < long_ma) & (short_ma.shift(1) >= long_ma.shift(1))
             signals['sell'] = death_cross
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
+
+
+class RSIStrategy(BaseStrategy):
+    """
+    A strategy that buys when RSI drops below a lower threshold (oversold)
+    and sells when RSI exceeds an upper threshold (overbought).
+    """
+
+    def __init__(self, period: int = 14, lower_bound: float = 30, upper_bound: float = 70):
+        """
+        Initialize the RSI strategy.
+
+        Args:
+            period: RSI calculation period (default 14)
+            lower_bound: RSI lower threshold for buy signals (default 30)
+            upper_bound: RSI upper threshold for sell signals (default 70)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        validate_integer(
+            period,
+            "period",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+        validate_positive_number(
+            lower_bound,
+            "lower_bound",
+            allow_zero=True,
+            max_value=100
+        )
+        validate_positive_number(
+            upper_bound,
+            "upper_bound",
+            allow_zero=True,
+            max_value=100
+        )
+
+        if lower_bound >= upper_bound:
+            raise ValidationError(
+                f"lower_bound ({lower_bound}) must be less than upper_bound ({upper_bound})"
+            )
+
+        self.period = period
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'period', 'lower_bound', and 'upper_bound' parameters
+        """
+        return {
+            "period": self.period,
+            "lower_bound": self.lower_bound,
+            "upper_bound": self.upper_bound
+        }
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing parameter keys to update
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "period" in params:
+            period = params["period"]
+            validate_integer(
+                period,
+                "period",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.period = period
+
+        if "lower_bound" in params:
+            lower_bound = params["lower_bound"]
+            validate_positive_number(
+                lower_bound,
+                "lower_bound",
+                allow_zero=True,
+                max_value=100
+            )
+            self.lower_bound = lower_bound
+
+        if "upper_bound" in params:
+            upper_bound = params["upper_bound"]
+            validate_positive_number(
+                upper_bound,
+                "upper_bound",
+                allow_zero=True,
+                max_value=100
+            )
+            self.upper_bound = upper_bound
+
+        # Re-validate relationship after updates
+        if self.lower_bound >= self.upper_bound:
+            raise ValidationError(
+                f"lower_bound ({self.lower_bound}) must be less than "
+                f"upper_bound ({self.upper_bound})"
+            )
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            The period parameter
+        """
+        return self.period
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on RSI levels.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close' column
+                  with DatetimeIndex and at least period rows
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close'],
+            min_rows=self.period
+        )
+        validate_price_data(data, 'Close')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            # Calculate RSI using ta library
+            rsi = ta.momentum.RSIIndicator(close=data['Close'], window=self.period).rsi()
+
+            # Buy signal: RSI below lower_bound (oversold)
+            signals['buy'] = rsi < self.lower_bound
+
+            # Sell signal: RSI above upper_bound (overbought)
+            signals['sell'] = rsi > self.upper_bound
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
+
+
+class MACDStrategy(BaseStrategy):
+    """
+    A strategy that buys when the MACD line crosses above the signal line
+    (bullish crossover) and sells when MACD crosses below signal (bearish crossover).
+    """
+
+    def __init__(self, fast: int = 12, slow: int = 26, signal: int = 9):
+        """
+        Initialize the MACD strategy.
+
+        Args:
+            fast: Fast EMA period (default 12)
+            slow: Slow EMA period (default 26)
+            signal: Signal line EMA period (default 9)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        validate_integer(
+            fast,
+            "fast",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+        validate_integer(
+            slow,
+            "slow",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+        validate_integer(
+            signal,
+            "signal",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+
+        if fast >= slow:
+            raise ValidationError(
+                f"fast ({fast}) must be less than slow ({slow})"
+            )
+
+        self.fast = fast
+        self.slow = slow
+        self.signal = signal
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'fast', 'slow', and 'signal' parameters
+        """
+        return {"fast": self.fast, "slow": self.slow, "signal": self.signal}
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing parameter keys to update
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "fast" in params:
+            fast = params["fast"]
+            validate_integer(
+                fast,
+                "fast",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.fast = fast
+
+        if "slow" in params:
+            slow = params["slow"]
+            validate_integer(
+                slow,
+                "slow",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.slow = slow
+
+        if "signal" in params:
+            signal = params["signal"]
+            validate_integer(
+                signal,
+                "signal",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.signal = signal
+
+        # Re-validate relationship after updates
+        if self.fast >= self.slow:
+            raise ValidationError(
+                f"fast ({self.fast}) must be less than slow ({self.slow})"
+            )
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            slow + signal (longest lookback period for MACD calculation)
+        """
+        return self.slow + self.signal
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on MACD crossovers.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close' column
+                  with DatetimeIndex and at least (slow + signal) rows
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close'],
+            min_rows=self.warmup_period
+        )
+        validate_price_data(data, 'Close')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            # Calculate MACD using ta library
+            macd_indicator = ta.trend.MACD(
+                close=data['Close'],
+                window_fast=self.fast,
+                window_slow=self.slow,
+                window_sign=self.signal
+            )
+            macd_line = macd_indicator.macd()
+            signal_line = macd_indicator.macd_signal()
+
+            # Buy signal: MACD crosses above signal line (bullish crossover)
+            # Previous day: macd <= signal, Current day: macd > signal
+            bullish_cross = (macd_line > signal_line) & (macd_line.shift(1) <= signal_line.shift(1))
+            signals['buy'] = bullish_cross
+
+            # Sell signal: MACD crosses below signal line (bearish crossover)
+            # Previous day: macd >= signal, Current day: macd < signal
+            bearish_cross = (macd_line < signal_line) & (macd_line.shift(1) >= signal_line.shift(1))
+            signals['sell'] = bearish_cross
 
             # Shift signals to trade on the next day's open
             signals = signals.shift(1).fillna(False)
