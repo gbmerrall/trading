@@ -1218,3 +1218,184 @@ class GapStrategy(BaseStrategy):
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
+
+
+class FibonacciRetracementStrategy(BaseStrategy):
+    """
+    A strategy that identifies swing highs/lows and trades Fibonacci retracement levels.
+    Buys near support (61.8% retracement) and sells near resistance (38.2% retracement).
+    """
+
+    def __init__(self, swing_lookback: int = 20, retracement_levels: list = None):
+        """
+        Initialize the Fibonacci Retracement strategy.
+
+        Args:
+            swing_lookback: Number of days to look back for swing high/low (default 20)
+            retracement_levels: List of Fibonacci levels between 0 and 1 (default [0.382, 0.5, 0.618])
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if retracement_levels is None:
+            retracement_levels = [0.382, 0.5, 0.618]
+
+        validate_integer(
+            swing_lookback,
+            "swing_lookback",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+
+        if not isinstance(retracement_levels, list) or len(retracement_levels) == 0:
+            raise ValidationError("retracement_levels must be a non-empty list")
+
+        for level in retracement_levels:
+            if not isinstance(level, (int, float)) or level < 0 or level > 1:
+                raise ValidationError(
+                    f"retracement_levels must contain numbers between 0 and 1, got {level}"
+                )
+
+        self.swing_lookback = swing_lookback
+        self.retracement_levels = retracement_levels
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'swing_lookback' and 'retracement_levels' parameters
+        """
+        return {
+            "swing_lookback": self.swing_lookback,
+            "retracement_levels": self.retracement_levels
+        }
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing parameter keys to update
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "swing_lookback" in params:
+            swing_lookback = params["swing_lookback"]
+            validate_integer(
+                swing_lookback,
+                "swing_lookback",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.swing_lookback = swing_lookback
+
+        if "retracement_levels" in params:
+            retracement_levels = params["retracement_levels"]
+            if not isinstance(retracement_levels, list) or len(retracement_levels) == 0:
+                raise ValidationError("retracement_levels must be a non-empty list")
+
+            for level in retracement_levels:
+                if not isinstance(level, (int, float)) or level < 0 or level > 1:
+                    raise ValidationError(
+                        f"retracement_levels must contain numbers between 0 and 1, got {level}"
+                    )
+
+            self.retracement_levels = retracement_levels
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            The swing_lookback parameter
+        """
+        return self.swing_lookback
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on Fibonacci retracement levels.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close', 'High', 'Low' columns
+                  with DatetimeIndex and at least swing_lookback rows
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close', 'High', 'Low'],
+            min_rows=self.swing_lookback
+        )
+        validate_price_data(data, 'Close')
+        validate_price_data(data, 'High')
+        validate_price_data(data, 'Low')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            close_prices = data['Close']
+            high_prices = data['High']
+            low_prices = data['Low']
+
+            # Calculate swing high and low over lookback period
+            swing_high = high_prices.rolling(
+                window=self.swing_lookback,
+                min_periods=self.swing_lookback
+            ).max()
+            swing_low = low_prices.rolling(
+                window=self.swing_lookback,
+                min_periods=self.swing_lookback
+            ).min()
+
+            # Calculate swing range
+            swing_range = swing_high - swing_low
+
+            # Only generate signals when there is a meaningful swing range
+            # If swing_range is 0 or near-zero, no retracement levels exist
+            has_swing = swing_range > 0
+
+            # Find support level (61.8% retracement from high)
+            # Support = swing_low + swing_range * 0.618
+            support_level = swing_low + swing_range * 0.618
+
+            # Find resistance level (38.2% retracement from high)
+            # Resistance = swing_low + swing_range * 0.382
+            resistance_level = swing_low + swing_range * 0.382
+
+            # Define tolerance for "near" (2% of swing range)
+            tolerance = swing_range * 0.02
+
+            # Buy signal: price is near support level (within tolerance)
+            # Price close to 61.8% retracement indicates potential bounce
+            # Only signal when there is a meaningful swing range
+            near_support = (close_prices >= support_level - tolerance) & (
+                close_prices <= support_level + tolerance
+            ) & has_swing
+            signals['buy'] = near_support
+
+            # Sell signal: price is near resistance level (within tolerance)
+            # Price close to 38.2% retracement indicates potential rejection
+            # Only signal when there is a meaningful swing range
+            near_resistance = (close_prices >= resistance_level - tolerance) & (
+                close_prices <= resistance_level + tolerance
+            ) & has_swing
+            signals['sell'] = near_resistance
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
