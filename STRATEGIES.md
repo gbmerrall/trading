@@ -8,19 +8,22 @@
 
 - [x] **Consecutive days (Buy/Sell)**: Buy after N consecutive down days, sell after N consecutive
   up days. Class: `ConsecutiveDaysStrategy`.
+- [x] **Moving average crossover**: Generates buy signals when a short-term moving average crosses
+  above a long-term moving average, and sell signals on the reverse crossover.
+  Class: `MovingAverageCrossoverStrategy`.
+- [x] **Relative strength index (RSI)**: Uses the RSI oscillator to buy when the indicator drops
+  below an oversold threshold and sell when it exceeds an overbought threshold.
+  Class: `RSIStrategy`.
+- [x] **MACD**: Tracks the relationship between two exponential moving averages to identify momentum
+  changes via MACD/signal line crossovers. Class: `MACDStrategy`.
+- [x] **Bollinger bands**: Capitalizes on mean reversion by buying on lower band touches and selling
+  on upper band touches. Class: `BollingerBandsStrategy`.
+- [x] **Parabolic SAR**: Uses a trailing stop-loss system to determine trend direction and potential
+  reversals based on price acceleration. Class: `ParabolicSARStrategy`.
 
 ## Planned: Technical Indicator Strategies
 
-- [ ] **Moving average crossover**: Generates buy signals when a short-term moving average crosses
-  above a long-term moving average, and sell signals on the reverse crossover.
-- [ ] **Relative strength index (RSI)**: Uses the RSI oscillator to buy when the indicator drops
-  below an oversold threshold and sell when it exceeds an overbought threshold.
-- [ ] **Bollinger bands**: Capitalizes on mean reversion by buying on lower band touches and selling
-  on upper band touches, with squeeze detection for breakout confirmation.
-- [ ] **MACD**: Tracks the relationship between two exponential moving averages to identify momentum
-  changes via MACD/signal line crossovers.
-- [ ] **Parabolic SAR**: Uses a trailing stop-loss system to determine trend direction and potential
-  reversals based on price acceleration.
+None remaining - all technical indicator strategies completed!
 
 ## Planned: Price Action Strategies
 
