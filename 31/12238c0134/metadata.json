@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "3112238c0134",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CLAUDE.md",
+    "IMPLEMENTATION_PLAN.md",
+    "STRATEGIES.md",
+    "backtest/strategy.py",
+    "tests/test_macd_strategy.py",
+    "tests/test_moving_average_strategy.py",
+    "tests/test_rsi_strategy.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/31/12238c0134/0/metadata.json",
+      "transcript": "/31/12238c0134/0/full.jsonl",
+      "context": "/31/12238c0134/0/context.md",
+      "content_hash": "/31/12238c0134/0/content_hash.txt",
+      "prompt": "/31/12238c0134/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 244,
+    "cache_creation_tokens": 37751,
+    "cache_read_tokens": 3860158,
+    "output_tokens": 9303,
+    "api_call_count": 30
+  }
+}
