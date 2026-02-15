@@ -190,6 +190,12 @@ All benchmarks must:
 - `GapStrategy` - Gap trading (requires Open column)
 - `FibonacciRetracementStrategy` - Support/resistance at Fib levels (requires High/Low)
 
+*Composite Strategies:*
+- `MeanReversionStrategy` - Combines RSI + Bollinger Bands for mean reversion
+- `MomentumStrategy` - Rate of Change (ROC) for momentum-based trading
+- `VolatilityStrategy` - ATR-based volatility breakouts (requires High/Low)
+- `EnsembleStrategy` - Aggregates multiple sub-strategies via majority voting
+
 ### Adding a New Benchmark
 1. Inherit from `BaseBenchmark`
 2. Implement `calculate_returns(data, start_capital) -> pd.Series`

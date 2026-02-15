@@ -39,16 +39,20 @@ None remaining - all technical indicator strategies completed!
 
 None remaining - all price action strategies completed!
 
+## Implemented: Composite Strategies
+
+- [x] **Mean reversion**: Combines RSI and Bollinger Bands to identify overbought/oversold
+  conditions and trade the reversion to the mean. Class: `MeanReversionStrategy`.
+- [x] **Momentum (ROC)**: Uses Rate-of-Change momentum indicator to buy when momentum exceeds
+  positive threshold and sell when below negative threshold. Class: `MomentumStrategy`.
+- [x] **Volatility (ATR)**: Uses Average True Range for breakout detection during high volatility
+  periods. Class: `VolatilityStrategy` (requires High/Low columns).
+- [x] **Ensemble/Combination**: A wrapper strategy that accepts multiple sub-strategies and
+  aggregates their signals via majority voting. Class: `EnsembleStrategy`.
+
 ## Planned: Composite Strategies
 
-- [ ] **Mean reversion**: Combines RSI and Bollinger Bands to identify overbought/oversold
-  conditions and trade the reversion to the mean. Single-asset only.
-- [ ] **Momentum (ROC)**: Uses Rate-of-Change or similar single-asset momentum oscillator to buy
-  securities showing upward price trends and sell those showing downward trends.
-- [ ] **Volatility (ATR)**: Uses Average True Range for breakout detection and position sizing.
-  Single-asset, price-data only (no options or volatility indices).
-- [ ] **Ensemble/Combination**: A wrapper strategy that accepts multiple sub-strategies and
-  aggregates their signals via majority voting.
+None remaining - all composite strategies completed!
 
 ## Scope Constraints
 
