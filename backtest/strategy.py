@@ -1101,3 +1101,120 @@ class BreakoutStrategy(BaseStrategy):
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
+
+
+class GapStrategy(BaseStrategy):
+    """
+    A strategy that trades overnight gaps. Buys on gap-down (expecting fill)
+    and sells on gap-up (expecting reversal or fade).
+    """
+
+    def __init__(self, min_gap_pct: float = 0.02):
+        """
+        Initialize the Gap strategy.
+
+        Args:
+            min_gap_pct: Minimum gap percentage to trigger signal (default 0.02 = 2%)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        validate_positive_number(
+            min_gap_pct,
+            "min_gap_pct",
+            allow_zero=False,
+            max_value=1.0
+        )
+
+        self.min_gap_pct = min_gap_pct
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'min_gap_pct' parameter
+        """
+        return {"min_gap_pct": self.min_gap_pct}
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing 'min_gap_pct' key
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "min_gap_pct" in params:
+            min_gap_pct = params["min_gap_pct"]
+            validate_positive_number(
+                min_gap_pct,
+                "min_gap_pct",
+                allow_zero=False,
+                max_value=1.0
+            )
+            self.min_gap_pct = min_gap_pct
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            1 (minimal warmup for gap detection)
+        """
+        return 1
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on overnight gaps.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close' and 'Open' columns
+                  with DatetimeIndex and at least 1 row
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close', 'Open'],
+            min_rows=self.warmup_period
+        )
+        validate_price_data(data, 'Close')
+        validate_price_data(data, 'Open')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            close_prices = data['Close']
+            open_prices = data['Open']
+
+            # Calculate gap: (open - previous close) / previous close
+            prev_close = close_prices.shift(1)
+            gap_pct = (open_prices - prev_close) / prev_close
+
+            # Buy signal: gap down (negative gap) exceeding threshold
+            # Expecting the gap to fill (price to rise back)
+            signals['buy'] = gap_pct < -self.min_gap_pct
+
+            # Sell signal: gap up (positive gap) exceeding threshold
+            # Expecting reversal or fade
+            signals['sell'] = gap_pct > self.min_gap_pct
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
