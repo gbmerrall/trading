@@ -1,0 +1,34 @@
+please review @STRATEGIES.md, @CLAUDE.md and @IMPLEMENTATION_PLAN.md  and examine code to identify any postential issues and gaps prior to implemenation
+
+---
+
+please update @STRATEGIES.md and @IMPLEMENTATION_PLAN.md to reflect your findings
+
+---
+
+what other questions needed resolving?
+
+---
+
+does @CLAUDE.md need updating yet?
+
+---
+
+should we use pydantic instead of custom validation in @backtest/validation.py ?
+
+---
+
+Please implement "Part 1: Architecture Refactoring"
+
+---
+
+OK you can now continue. Please ensure you commit as you go
+
+---
+
+does @CLAUDE.md need updating?
+
+---
+
+Let's move on to Phae 2.1 but only implement MovingAverageCrossoverStrategy to start so we can check everything is OK before implementing anything else. 
+As a general instruction, after each phase check if @CLAUDE.md needs updating and update if required
