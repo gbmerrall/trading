@@ -688,4 +688,295 @@ class MACDStrategy(BaseStrategy):
         except Exception as e:
             raise ValidationError(f"Error generating signals: {str(e)}") from e
 
-        return signals 
+        return signals
+
+
+class BollingerBandsStrategy(BaseStrategy):
+    """
+    A strategy that buys when price touches/breaks the lower Bollinger Band
+    and sells when price touches/breaks the upper Bollinger Band (mean reversion).
+    """
+
+    def __init__(self, period: int = 20, std_dev: float = 2.0):
+        """
+        Initialize the Bollinger Bands strategy.
+
+        Args:
+            period: Moving average period (default 20)
+            std_dev: Standard deviation multiplier for bands (default 2.0)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        validate_integer(
+            period,
+            "period",
+            min_value=1,
+            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+        )
+        validate_positive_number(
+            std_dev,
+            "std_dev",
+            allow_zero=False,
+            max_value=10.0
+        )
+
+        self.period = period
+        self.std_dev = std_dev
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'period' and 'std_dev' parameters
+        """
+        return {"period": self.period, "std_dev": self.std_dev}
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing parameter keys to update
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "period" in params:
+            period = params["period"]
+            validate_integer(
+                period,
+                "period",
+                min_value=1,
+                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            )
+            self.period = period
+
+        if "std_dev" in params:
+            std_dev = params["std_dev"]
+            validate_positive_number(
+                std_dev,
+                "std_dev",
+                allow_zero=False,
+                max_value=10.0
+            )
+            self.std_dev = std_dev
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            The period parameter
+        """
+        return self.period
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on Bollinger Bands.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close' column
+                  with DatetimeIndex and at least period rows
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close'],
+            min_rows=self.period
+        )
+        validate_price_data(data, 'Close')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            # Calculate Bollinger Bands using ta library
+            bb_indicator = ta.volatility.BollingerBands(
+                close=data['Close'],
+                window=self.period,
+                window_dev=self.std_dev
+            )
+            lower_band = bb_indicator.bollinger_lband()
+            upper_band = bb_indicator.bollinger_hband()
+            close_prices = data['Close']
+
+            # Buy signal: price touches or breaks below lower band (mean reversion)
+            signals['buy'] = close_prices <= lower_band
+
+            # Sell signal: price touches or breaks above upper band (mean reversion)
+            signals['sell'] = close_prices >= upper_band
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
+
+
+class ParabolicSARStrategy(BaseStrategy):
+    """
+    A strategy that buys when price crosses above the Parabolic SAR
+    and sells when price crosses below the Parabolic SAR (trend following).
+    """
+
+    def __init__(self, af: float = 0.02, max_af: float = 0.2):
+        """
+        Initialize the Parabolic SAR strategy.
+
+        Args:
+            af: Acceleration factor (default 0.02)
+            max_af: Maximum acceleration factor (default 0.2)
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        validate_positive_number(
+            af,
+            "af",
+            allow_zero=False,
+            max_value=1.0
+        )
+        validate_positive_number(
+            max_af,
+            "max_af",
+            allow_zero=False,
+            max_value=1.0
+        )
+
+        if af > max_af:
+            raise ValidationError(
+                f"af ({af}) must be less than or equal to max_af ({max_af})"
+            )
+
+        self.af = af
+        self.max_af = max_af
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """
+        Return current strategy parameters.
+
+        Returns:
+            Dictionary with 'af' and 'max_af' parameters
+        """
+        return {"af": self.af, "max_af": self.max_af}
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """
+        Update strategy parameters dynamically.
+
+        Args:
+            params: Dictionary containing parameter keys to update
+
+        Raises:
+            ValidationError: If parameters are invalid
+        """
+        if "af" in params:
+            af = params["af"]
+            validate_positive_number(
+                af,
+                "af",
+                allow_zero=False,
+                max_value=1.0
+            )
+            self.af = af
+
+        if "max_af" in params:
+            max_af = params["max_af"]
+            validate_positive_number(
+                max_af,
+                "max_af",
+                allow_zero=False,
+                max_value=1.0
+            )
+            self.max_af = max_af
+
+        # Re-validate relationship after updates
+        if self.af > self.max_af:
+            raise ValidationError(
+                f"af ({self.af}) must be less than or equal to max_af ({self.max_af})"
+            )
+
+    @property
+    def warmup_period(self) -> int:
+        """
+        Minimum bars needed before signals are valid.
+
+        Returns:
+            1 (minimal warmup for Parabolic SAR)
+        """
+        return 1
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Generate buy and sell signals based on Parabolic SAR crossovers.
+
+        Args:
+            data: DataFrame with OHLCV data, must contain 'Close', 'High', 'Low' columns
+                  with DatetimeIndex and at least 1 row
+
+        Returns:
+            DataFrame with 'buy' and 'sell' boolean columns, same index as input
+
+        Raises:
+            ValidationError: If data validation fails
+        """
+        # Comprehensive input validation
+        validate_dataframe(
+            data,
+            required_columns=['Close', 'High', 'Low'],
+            min_rows=self.warmup_period
+        )
+        validate_price_data(data, 'Close')
+        validate_price_data(data, 'High')
+        validate_price_data(data, 'Low')
+
+        # Initialize signals DataFrame
+        signals = pd.DataFrame(index=data.index, dtype=bool)
+        signals['buy'] = False
+        signals['sell'] = False
+
+        try:
+            # Calculate Parabolic SAR using ta library
+            psar_indicator = ta.trend.PSARIndicator(
+                high=data['High'],
+                low=data['Low'],
+                close=data['Close'],
+                step=self.af,
+                max_step=self.max_af
+            )
+            psar = psar_indicator.psar()
+            close_prices = data['Close']
+
+            # Align the psar series with the data index (ta library may alter index)
+            psar = psar.reindex(data.index)
+
+            # Buy signal: price crosses above SAR (SAR switches from above to below price)
+            prev_below = close_prices.shift(1) < psar.shift(1)
+            curr_above = close_prices > psar
+            signals['buy'] = prev_below & curr_above
+
+            # Sell signal: price crosses below SAR (SAR switches from below to above price)
+            prev_above = close_prices.shift(1) > psar.shift(1)
+            curr_below = close_prices < psar
+            signals['sell'] = prev_above & curr_below
+
+            # Shift signals to trade on the next day's open
+            signals = signals.shift(1).fillna(False)
+
+        except Exception as e:
+            raise ValidationError(f"Error generating signals: {str(e)}") from e
+
+        return signals
