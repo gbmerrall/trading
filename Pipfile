@@ -10,8 +10,8 @@ pytest = "*"
 yfinance = "*"
 plotly = "*"
 kaleido = "*"
-pydantic = "*"
 pyyaml = "*"
+ta = "*"
 
 [dev-packages]
 pytest = "*"
