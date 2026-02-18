@@ -26,6 +26,53 @@
     "output_tokens": 24994,
     "api_call_count": 67
   },
+  "summary": {
+    "intent": "Implement Phase 2.3 Composite Strategies (MeanReversionStrategy, MomentumStrategy, VolatilityStrategy, EnsembleStrategy) using TDD with a commit after each strategy.",
+    "outcome": "All 4 composite strategies were implemented and committed, bringing total tests to 377 (all passing) with 97% coverage. STRATEGIES.md and CLAUDE.md were updated to reflect completion.",
+    "learnings": {
+      "repo": [
+        "Validation uses `validate_integer` not `validate_positive_integer` for integer parameters",
+        "Dataframe column validation uses `validate_price_data(df, column='Close')` not `required_columns=[...]`",
+        "Signal shift by 1 day is applied in all strategies to prevent look-ahead bias",
+        "warmup_period for composite strategies is max() of component indicator periods",
+        "EnsembleStrategy uses majority voting via configurable `min_agreement` parameter",
+        "ta library provides ROCIndicator in ta.momentum and AverageTrueRange in ta.volatility"
+      ],
+      "code": [
+        {
+          "path": "backtest/strategy.py",
+          "line": 1401,
+          "finding": "MeanReversionStrategy, MomentumStrategy, VolatilityStrategy, and EnsembleStrategy were all appended after FibonacciRetracementStrategy"
+        },
+        {
+          "path": "backtest/validation.py",
+          "finding": "validate_price_data takes a `column` keyword arg (singular string), not `required_columns` (list)"
+        },
+        {
+          "path": "tests/test_ensemble_strategy.py",
+          "finding": "Warmup period assertions must be checked against actual strategy instances rather than assumed values; a typo fix and warmup period correction were needed after first test run"
+        }
+      ],
+      "workflow": [
+        "TDD workflow: write test file with Write tool, verify ta library API with Bash, then implement with Edit tool",
+        "Checking ta indicator method signatures with `inspect.signature` or `help()` via Bash is faster than documentation lookup",
+        "Running strategy-specific tests before the full suite catches issues early and saves time",
+        "Committing after each individual strategy (not batching) keeps git history granular and traceable"
+      ]
+    },
+    "friction": [
+      "Initial MeanReversionStrategy tests failed due to using `validate_positive_integer` which doesn't exist; had to inspect validation.py to find correct function names",
+      "validate_price_data call used wrong keyword argument `required_columns` instead of `column`, requiring a second fix pass",
+      "EnsembleStrategy tests had a typo and incorrect warmup period assumptions, requiring multiple edit-and-rerun cycles",
+      "Context window exhaustion mid-session required summary-based continuation, causing some rework to re-establish state"
+    ],
+    "open_items": [
+      "Phase 3: Walk-Forward Analysis (WFA) not yet started",
+      "EnsembleStrategy voting logic could be extended with weighted voting (currently uniform weights)",
+      "No integration tests verifying composite strategies work end-to-end within the backtesting engine",
+      "IMPLEMENTATION_PLAN.md may need updating to mark Phase 2.3 as complete"
+    ]
+  },
   "initial_attribution": {
     "calculated_at": "2026-02-15T01:35:42.550688Z",
     "agent_lines": 1369,
