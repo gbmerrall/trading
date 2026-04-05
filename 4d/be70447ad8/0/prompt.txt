@@ -104,3 +104,7 @@ before we do that I want to really beef up @examples. Remove the existing @examp
 ---
 
 can you explain why @main.py keeps showing up?
+
+---
+
+Let's now update those 2 items from Phase 5 we discussed. Update README.md and examples if relevant
