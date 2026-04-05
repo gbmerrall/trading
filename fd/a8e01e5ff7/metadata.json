@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "fda8e01e5ff7",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "tests/test_macd_strategy.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fd/a8e01e5ff7/0/metadata.json",
+      "transcript": "/fd/a8e01e5ff7/0/full.jsonl",
+      "content_hash": "/fd/a8e01e5ff7/0/content_hash.txt",
+      "prompt": "/fd/a8e01e5ff7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 164,
+    "cache_creation_tokens": 120541,
+    "cache_read_tokens": 11525166,
+    "output_tokens": 42386,
+    "api_call_count": 153
+  }
+}
