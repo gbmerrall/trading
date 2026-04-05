@@ -1,11 +1,5 @@
-import os
-import sys
-
 import pandas as pd
 import pytest
-
-# Add project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.strategy import (
     EnsembleStrategy,
@@ -211,27 +205,34 @@ class TestEnsembleStrategy:
         assert not signals["sell"].iloc[0]
 
     def test_aggregation_counts_votes_correctly(self):
-        """Test that signal aggregation counts votes from all strategies."""
-        dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        # Strong downtrend to trigger multiple buy signals
-        prices = list(range(100, 50, -1))
+        """Test that min_agreement threshold controls how many strategies must agree.
+
+        RSI and BollingerBands both generate buy signals on a stable-then-sharp-drop
+        pattern (17+ buy signals each). MA generates very few. With min_agreement=1
+        any single strategy can trigger, producing the most signals. With
+        min_agreement=2 (RSI+BB must both agree), fewer signals are produced.
+        With min_agreement=3 (all must agree), even fewer.
+        """
+        dates = pd.date_range("2020-01-01", periods=60, freq="D")
+        # Stable baseline then sharp drop: RSI goes oversold, price breaks below BB
+        prices = [100.0] * 25 + [100 - i * 2 for i in range(1, 36)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
-        # Use 3 strategies that should all agree on strong downtrend
         rsi = RSIStrategy()
         bb = BollingerBandsStrategy()
         ma = MovingAverageCrossoverStrategy(short_window=5, long_window=15)
 
-        # Test with min_agreement=3 (all must agree)
-        strategy = EnsembleStrategy(strategies=[rsi, bb, ma], min_agreement=3)
-        signals = strategy.generate_signals(data)
+        strategy1 = EnsembleStrategy(strategies=[rsi, bb, ma], min_agreement=1)
+        strategy2 = EnsembleStrategy(strategies=[rsi, bb, ma], min_agreement=2)
+        strategy3 = EnsembleStrategy(strategies=[rsi, bb, ma], min_agreement=3)
 
-        # Should have signals where all 3 agree
-        assert signals["buy"].sum() >= 0  # At least possible
+        sigs1 = strategy1.generate_signals(data)
+        sigs2 = strategy2.generate_signals(data)
+        sigs3 = strategy3.generate_signals(data)
 
-        # Test with min_agreement=2 (majority)
-        strategy = EnsembleStrategy(strategies=[rsi, bb, ma], min_agreement=2)
-        signals = strategy.generate_signals(data)
-
-        # Should have more signals with lower threshold
-        assert len(signals) == len(data)
+        # Lower threshold => at least as many signals as higher threshold
+        assert sigs1["buy"].sum() >= sigs2["buy"].sum() >= sigs3["buy"].sum()
+        # min_agreement=1 with RSI+BB both firing should produce signals
+        assert sigs1["buy"].any(), "Expected buy signals with min_agreement=1"
+        # min_agreement=2 with RSI+BB both firing should still produce signals
+        assert sigs2["buy"].any(), "Expected buy signals when RSI and BB both agree"
