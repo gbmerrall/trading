@@ -1,11 +1,5 @@
-import os
-import sys
-
 import pandas as pd
 import pytest
-
-# Add project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.strategy import MACDStrategy
 from backtest.validation import ValidationError
@@ -97,38 +91,39 @@ class TestMACDStrategy:
             strategy.set_parameters({"fast": 30, "slow": 20})
 
     def test_buy_signal_on_bullish_crossover(self):
-        """Test signals can be generated from price data."""
-        dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        prices = list(range(100, 50, -1))
+        """Test buy signal fires when MACD line crosses above the signal line.
+
+        A bullish crossover requires a trend reversal: downtrend followed by uptrend
+        causes the fast EMA to cross above the slow EMA. 80 bars gives enough history
+        for the slow EMA (26) and signal line (9) to settle before the crossover.
+        """
+        dates = pd.date_range("2020-01-01", periods=80, freq="D")
+        # Downtrend then uptrend: creates a MACD bullish crossover at the inflection
+        prices = [100 - i for i in range(40)] + [60 + i for i in range(40)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = MACDStrategy(fast=12, slow=26, signal=9)
         signals = strategy.generate_signals(data)
 
-        # Verify signal structure
         assert "buy" in signals.columns
         assert "sell" in signals.columns
         assert len(signals) == len(data)
-        # All signal values should be False or True
-        assert all(isinstance(x, (bool, type(pd.NA))) for x in signals["buy"])
-        assert all(isinstance(x, (bool, type(pd.NA))) for x in signals["sell"])
+        assert signals["buy"].any(), "Expected buy signal at MACD bullish crossover"
 
     def test_sell_signal_on_bearish_crossover(self):
-        """Test signals maintain correct format across different price patterns."""
-        dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        prices = list(range(50, 100))
+        """Test sell signal fires when MACD line crosses below the signal line."""
+        dates = pd.date_range("2020-01-01", periods=80, freq="D")
+        # Uptrend then downtrend: creates a MACD bearish crossover at the inflection
+        prices = [60 + i for i in range(40)] + [100 - i for i in range(40)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = MACDStrategy(fast=12, slow=26, signal=9)
         signals = strategy.generate_signals(data)
 
-        # Verify signal structure
         assert "sell" in signals.columns
         assert "buy" in signals.columns
         assert len(signals) == len(data)
-        # Signals should be boolean-like
-        assert signals["buy"].isin([True, False]).all() or signals["buy"].isna().any()
-        assert signals["sell"].isin([True, False]).all() or signals["sell"].isna().any()
+        assert signals["sell"].any(), "Expected sell signal at MACD bearish crossover"
 
     def test_no_signals_in_warmup_period(self):
         """Test no signals generated during warmup period."""
