@@ -302,26 +302,26 @@ def load_config_from_environment() -> GlobalConfig:
 
 class ConfigManager:
     """Singleton configuration manager for global access."""
-    
+
     _instance = None
-    _config = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._config = None
         return cls._instance
-    
+
     def set_config(self, config: GlobalConfig) -> None:
         """Set the global configuration."""
         config.validate()
         self._config = config
-    
+
     def get_config(self) -> GlobalConfig:
         """Get the global configuration."""
         if self._config is None:
             self._config = ConfigFactory.create_default()
         return self._config
-    
+
     def reset(self) -> None:
         """Reset configuration to default."""
         self._config = None
