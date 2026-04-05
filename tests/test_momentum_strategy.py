@@ -1,11 +1,5 @@
-import os
-import sys
-
 import pandas as pd
 import pytest
-
-# Add project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.strategy import MomentumStrategy
 from backtest.validation import ValidationError
@@ -67,10 +61,10 @@ class TestMomentumStrategy:
             strategy.set_parameters({"roc_threshold": -0.05})
 
     def test_buy_signal_on_positive_momentum(self):
-        """Test buy signal when ROC exceeds positive threshold."""
+        """Test buy signal fires when ROC exceeds positive threshold."""
         dates = pd.date_range("2020-01-01", periods=30, freq="D")
-        # Create uptrend to trigger positive momentum
-        prices = [100 + i * 2 for i in range(30)]  # Strong uptrend
+        # Strong uptrend: +2/day gives ~24% ROC over 12 days, well above 5% threshold
+        prices = [100 + i * 2 for i in range(30)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = MomentumStrategy(roc_period=12, roc_threshold=0.05)
@@ -79,12 +73,14 @@ class TestMomentumStrategy:
         assert "buy" in signals.columns
         assert "sell" in signals.columns
         assert len(signals) == len(data)
+        assert signals["buy"].any(), "Expected buy signals on strong uptrend"
+        assert not signals["sell"].any(), "Expected no sell signals on uptrend"
 
     def test_sell_signal_on_negative_momentum(self):
-        """Test sell signal when ROC falls below negative threshold."""
+        """Test sell signal fires when ROC falls below negative threshold."""
         dates = pd.date_range("2020-01-01", periods=30, freq="D")
-        # Create downtrend to trigger negative momentum
-        prices = [100 - i * 2 for i in range(30)]  # Strong downtrend
+        # Strong downtrend: -2/day gives ~-24% ROC over 12 days, well below -5% threshold
+        prices = [100 - i * 2 for i in range(30)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = MomentumStrategy(roc_period=12, roc_threshold=0.05)
@@ -92,6 +88,8 @@ class TestMomentumStrategy:
 
         assert "sell" in signals.columns
         assert len(signals) == len(data)
+        assert signals["sell"].any(), "Expected sell signals on strong downtrend"
+        assert not signals["buy"].any(), "Expected no buy signals on downtrend"
 
     def test_no_signals_with_low_momentum(self):
         """Test no signals when ROC is below threshold."""
