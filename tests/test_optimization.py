@@ -227,3 +227,109 @@ class TestFilterByWarmup:
         h, t = _filter_by_warmup(history, trades, cutoff)
         assert h == []
         assert t == []
+
+
+class TestWalkForwardOptimizerInit:
+    """Tests for WalkForwardOptimizer construction and validation."""
+
+    def _make_data(self, n=300):
+        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+        return pd.DataFrame({"Close": range(1, n + 1)}, index=dates)
+
+    def _valid_kwargs(self, data):
+        from backtest.strategy import ConsecutiveDaysStrategy
+        return dict(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2, 3]},
+            data=data,
+            train_size=100,
+            test_size=50,
+            window_type="sliding",
+        )
+
+    def test_valid_construction_does_not_raise(self):
+        from backtest.optimization import WalkForwardOptimizer
+        data = self._make_data()
+        WalkForwardOptimizer(**self._valid_kwargs(data))
+
+    def test_invalid_train_size_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.validation import ValidationError
+        data = self._make_data()
+        kwargs = self._valid_kwargs(data)
+        kwargs["train_size"] = 0
+        with pytest.raises(ValidationError, match="train_size"):
+            WalkForwardOptimizer(**kwargs)
+
+    def test_invalid_test_size_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.validation import ValidationError
+        data = self._make_data()
+        kwargs = self._valid_kwargs(data)
+        kwargs["test_size"] = 0
+        with pytest.raises(ValidationError, match="test_size"):
+            WalkForwardOptimizer(**kwargs)
+
+    def test_train_plus_test_exceeds_data_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.validation import ValidationError
+        data = self._make_data(100)
+        kwargs = self._valid_kwargs(data)
+        kwargs["train_size"] = 80
+        kwargs["test_size"] = 30  # 80 + 30 > 100
+        with pytest.raises(ValidationError):
+            WalkForwardOptimizer(**kwargs)
+
+    def test_invalid_window_type_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.validation import ValidationError
+        data = self._make_data()
+        kwargs = self._valid_kwargs(data)
+        kwargs["window_type"] = "rolling"
+        with pytest.raises(ValidationError, match="window_type"):
+            WalkForwardOptimizer(**kwargs)
+
+    def test_non_strategy_class_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.validation import ValidationError
+        data = self._make_data()
+        kwargs = self._valid_kwargs(data)
+        kwargs["strategy_class"] = list  # not a BaseStrategy subclass
+        with pytest.raises(ValidationError, match="strategy_class"):
+            WalkForwardOptimizer(**kwargs)
+
+    def test_invalid_objective_string_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.validation import ValidationError
+        data = self._make_data()
+        kwargs = self._valid_kwargs(data)
+        kwargs["objective"] = "not_a_metric"
+        with pytest.raises(ValidationError, match="objective"):
+            WalkForwardOptimizer(**kwargs)
+
+    def test_callable_objective_accepted(self):
+        from backtest.optimization import WalkForwardOptimizer
+        data = self._make_data()
+        kwargs = self._valid_kwargs(data)
+        kwargs["objective"] = lambda ph, t: 0.0
+        WalkForwardOptimizer(**kwargs)  # should not raise
+
+    def test_string_objective_accepted(self):
+        from backtest.optimization import WalkForwardOptimizer
+        data = self._make_data()
+        kwargs = self._valid_kwargs(data)
+        kwargs["objective"] = "calmar_ratio"
+        WalkForwardOptimizer(**kwargs)  # should not raise
+
+    def test_default_objective_is_sharpe(self):
+        from backtest.optimization import WalkForwardOptimizer
+        data = self._make_data()
+        opt = WalkForwardOptimizer(**self._valid_kwargs(data))
+        from backtest.metrics import sharpe_ratio
+        assert opt._objective_fn is sharpe_ratio
+
+    def test_default_searcher_is_grid_search(self):
+        from backtest.optimization import GridSearch, WalkForwardOptimizer
+        data = self._make_data()
+        opt = WalkForwardOptimizer(**self._valid_kwargs(data))
+        assert isinstance(opt.searcher, GridSearch)

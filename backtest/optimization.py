@@ -159,3 +159,105 @@ def _filter_by_warmup(
     filtered_history = [e for e in portfolio_history if e["date"] >= cutoff_date]
     filtered_trades = [t for t in trades if t["exit_date"] >= cutoff_date]
     return filtered_history, filtered_trades
+
+
+class WalkForwardOptimizer:
+    """Optimise strategy parameters using Walk-Forward Analysis.
+
+    For each train window, exhaustively or randomly searches the parameter
+    space and selects the best-scoring parameter set. Applies those
+    parameters to the subsequent out-of-sample test window. Stitches
+    test-window equity curves into a composite result.
+
+    Args:
+        strategy_class: A BaseStrategy subclass (not an instance).
+        param_space: Dict mapping parameter names to lists of candidate values.
+        data: Full historical DataFrame with DatetimeIndex and 'Close' column.
+        train_size: Number of bars in each training window.
+        test_size: Number of bars in each test window.
+        window_type: "sliding" or "anchored".
+        searcher: GridSearch() or RandomSearch(n, seed). Default: GridSearch().
+        objective: Metric name string (key of METRICS) or MetricFn callable.
+                   Default: "sharpe_ratio".
+        min_trades: Minimum trades required to score a window. Windows with
+                    fewer trades receive float('-inf') as their score.
+                    Default: 5.
+
+    Example:
+        opt = WalkForwardOptimizer(
+            strategy_class=RSIStrategy,
+            param_space={"period": [7, 14, 21]},
+            data=df,
+            train_size=252,
+            test_size=63,
+            window_type="sliding",
+            objective="sharpe_ratio",
+        )
+        result = opt.run()
+    """
+
+    def __init__(
+        self,
+        strategy_class: type,
+        param_space: dict[str, list],
+        data: pd.DataFrame,
+        train_size: int,
+        test_size: int,
+        window_type: str = "sliding",
+        searcher: Union[GridSearch, RandomSearch, None] = None,
+        objective: Union[str, MetricFn] = "sharpe_ratio",
+        min_trades: int = 5,
+    ):
+        """
+        Args:
+            strategy_class: A BaseStrategy subclass (not an instance).
+            param_space: Dict mapping parameter names to lists of candidate values.
+            data: Full historical DataFrame with DatetimeIndex and 'Close' column.
+            train_size: Number of bars in each training window.
+            test_size: Number of bars in each test window.
+            window_type: "sliding" or "anchored".
+            searcher: Search strategy. Default: GridSearch().
+            objective: Metric to optimise. Default: "sharpe_ratio".
+            min_trades: Minimum trades to score a window. Default: 5.
+
+        Raises:
+            ValidationError: If any argument is invalid.
+        """
+        if train_size < 1:
+            raise ValidationError(f"train_size must be >= 1, got {train_size}")
+        if test_size < 1:
+            raise ValidationError(f"test_size must be >= 1, got {test_size}")
+        if train_size + test_size > len(data):
+            raise ValidationError(
+                f"train_size ({train_size}) + test_size ({test_size}) = "
+                f"{train_size + test_size} exceeds data length ({len(data)})"
+            )
+        if window_type not in ("sliding", "anchored"):
+            raise ValidationError(
+                f"window_type must be 'sliding' or 'anchored', got '{window_type}'"
+            )
+        if not (isinstance(strategy_class, type) and issubclass(strategy_class, BaseStrategy)):
+            raise ValidationError(
+                f"strategy_class must be a subclass of BaseStrategy, got {strategy_class}"
+            )
+        if isinstance(objective, str):
+            if objective not in METRICS:
+                raise ValidationError(
+                    f"objective '{objective}' not in METRICS. "
+                    f"Valid keys: {sorted(METRICS.keys())}"
+                )
+            objective_fn = METRICS[objective]
+        elif callable(objective):
+            objective_fn = objective
+        else:
+            raise ValidationError("objective must be a metric name string or callable")
+
+        self.strategy_class = strategy_class
+        self.param_space = param_space
+        self.data = data
+        self.train_size = train_size
+        self.test_size = test_size
+        self.window_type = window_type
+        self.searcher = searcher if searcher is not None else GridSearch()
+        self._objective_fn = objective_fn
+        self.min_trades = min_trades
