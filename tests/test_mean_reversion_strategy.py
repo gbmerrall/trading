@@ -1,11 +1,5 @@
-import os
-import sys
-
 import pandas as pd
 import pytest
-
-# Add project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.strategy import MeanReversionStrategy
 from backtest.validation import ValidationError
@@ -97,10 +91,17 @@ class TestMeanReversionStrategy:
             strategy.set_parameters({"rsi_lower": 80, "rsi_upper": 20})
 
     def test_buy_signal_on_oversold_and_below_lower_band(self):
-        """Test buy signal when RSI < lower AND price < lower BB."""
-        dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        # Create downtrend to trigger oversold conditions
-        prices = list(range(100, 50, -1))
+        """Test buy signal fires when RSI < lower AND price < lower BB simultaneously.
+
+        Both conditions must be true at the same time. A linear downtrend doesn't
+        trigger this because price never snaps below the band relative to recent
+        history. A sharp drop after a stable period creates an RSI-oversold AND
+        below-band condition on the same bars.
+        """
+        dates = pd.date_range("2020-01-01", periods=60, freq="D")
+        # 25 stable days so BB has a tight reference, then sharp drop forces
+        # price below the lower band while RSI goes oversold
+        prices = [100.0] * 25 + [100 - i * 2 for i in range(1, 36)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = MeanReversionStrategy(rsi_period=14, bb_period=20)
@@ -109,12 +110,13 @@ class TestMeanReversionStrategy:
         assert "buy" in signals.columns
         assert "sell" in signals.columns
         assert len(signals) == len(data)
+        assert signals["buy"].any(), "Expected buy signals after sharp drop from stable baseline"
 
     def test_sell_signal_on_overbought_and_above_upper_band(self):
-        """Test sell signal when RSI > upper AND price > upper BB."""
-        dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        # Create uptrend to trigger overbought conditions
-        prices = list(range(50, 100))
+        """Test sell signal fires when RSI > upper AND price > upper BB simultaneously."""
+        dates = pd.date_range("2020-01-01", periods=60, freq="D")
+        # 25 stable days then sharp rise forces price above upper band while RSI goes overbought
+        prices = [100.0] * 25 + [100 + i * 2 for i in range(1, 36)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = MeanReversionStrategy(rsi_period=14, bb_period=20)
@@ -122,6 +124,7 @@ class TestMeanReversionStrategy:
 
         assert "sell" in signals.columns
         assert len(signals) == len(data)
+        assert signals["sell"].any(), "Expected sell signals after sharp rise from stable baseline"
 
     def test_no_signals_in_warmup_period(self):
         """Test no signals generated during warmup period."""
