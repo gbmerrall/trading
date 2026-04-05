@@ -1,0 +1,5 @@
+I'd like you to review this code. Start with @CLAUDE.md and the other markdown files in this directory. Then look for any opportunities for improvement, rafactoring, optimisation along with dead code or any code smells etc. Report your findings
+
+---
+
+OK test stuff is installed
