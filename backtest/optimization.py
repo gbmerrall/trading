@@ -9,7 +9,9 @@ Public API:
 
 import itertools
 import logging
+import os
 import random
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 
 import pandas as pd
@@ -186,6 +188,56 @@ def _filter_by_warmup(
     return filtered_history, filtered_trades
 
 
+def _run_candidate_worker(
+    strategy_class: type,
+    params: dict,
+    train_data: pd.DataFrame,
+    warmup_n: int,
+    min_trades: int,
+    objective_key: str,
+) -> float:
+    """Evaluate one parameter set against a training window.
+
+    Module-level so ProcessPoolExecutor can pickle it. Returns the objective
+    score, or float('-inf') on any failure.
+
+    Args:
+        strategy_class: BaseStrategy subclass to instantiate.
+        params: Constructor kwargs for strategy_class.
+        train_data: Training window DataFrame.
+        warmup_n: Bars to exclude from the start when scoring.
+        min_trades: Minimum trades required to score (returns -inf otherwise).
+        objective_key: Key into METRICS for the objective function.
+
+    Returns:
+        Objective score as a float.
+    """
+    from backtest.runner import BacktestRunnerImpl
+    from backtest.metrics import METRICS
+
+    try:
+        strategy = strategy_class(**params)
+        runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
+        result = runner.run(data=train_data, start_capital=None)
+
+        portfolio_history = [
+            {"date": d, "value": v}
+            for d, v in result["strategy_returns"].items()
+        ]
+        trades = result["trades"]
+
+        if warmup_n > 0 and len(train_data) > warmup_n:
+            cutoff = train_data.index[warmup_n]
+            portfolio_history, trades = _filter_by_warmup(portfolio_history, trades, cutoff)
+
+        if len(trades) < min_trades:
+            return float("-inf")
+
+        return METRICS[objective_key](portfolio_history, trades)
+    except Exception:
+        return float("-inf")
+
+
 class WalkForwardOptimizer:
     """Optimise strategy parameters using Walk-Forward Analysis.
 
@@ -232,6 +284,7 @@ class WalkForwardOptimizer:
         searcher: "GridSearch | RandomSearch | None" = None,
         objective: "str | MetricFn" = "sharpe_ratio",
         min_trades: int = 5,
+        n_jobs: int = 1,
     ):
         """
         Args:
@@ -277,6 +330,11 @@ class WalkForwardOptimizer:
         else:
             raise ValidationError("objective must be a metric name string or callable")
 
+        if n_jobs == 0 or n_jobs < -1:
+            raise ValidationError(
+                f"n_jobs must be 1 (sequential), -1 (all CPUs), or a positive integer, got {n_jobs}"
+            )
+
         self.strategy_class = strategy_class
         self.param_space = param_space
         self.data = data
@@ -285,14 +343,19 @@ class WalkForwardOptimizer:
         self.window_type = window_type
         self.searcher = searcher if searcher is not None else GridSearch()
         self._objective_fn = objective_fn
+        # Store the original string key so the parallel worker can re-resolve it.
+        # None when objective was a custom callable (parallel falls back to sequential).
+        self._objective_key: str | None = objective if isinstance(objective, str) else None
         self.min_trades = min_trades
+        self.n_jobs = n_jobs
 
     def _run_train_window(self, train_data: pd.DataFrame) -> dict:
         """Find the best-scoring parameter set for a training window.
 
-        Runs BacktestRunnerImpl for each candidate parameter set, applies
-        warmup filtering, and scores with the objective function. Returns
-        the parameter set with the highest score.
+        Evaluates all candidates from the searcher, applies warmup filtering,
+        and scores with the objective function. When n_jobs != 1 and the
+        objective is a named metric, candidates are evaluated in parallel using
+        ProcessPoolExecutor. Falls back to sequential for custom callables.
 
         Args:
             train_data: Sliced training data with DatetimeIndex.
@@ -300,18 +363,43 @@ class WalkForwardOptimizer:
         Returns:
             Dict with keys "best_params" (dict) and "objective_score" (float).
         """
-        from .runner import BacktestRunnerImpl
-
         candidates = self.searcher.generate(self.param_space)
         if not candidates:
             return {"best_params": {}, "objective_score": float("-inf")}
-            
+
+        # Warmup period is the same for all candidates of the same strategy class.
+        warmup_n = self.strategy_class(**candidates[0]).warmup_period
+
+        actual_jobs = os.cpu_count() or 1 if self.n_jobs == -1 else self.n_jobs
+        use_parallel = actual_jobs != 1 and self._objective_key is not None
+
+        if use_parallel and self._objective_key is None:
+            logger.warning(
+                "n_jobs=%s requested but objective is a custom callable; "
+                "falling back to sequential evaluation.",
+                self.n_jobs,
+            )
+
+        if use_parallel:
+            return self._run_train_window_parallel(
+                candidates, train_data, warmup_n, actual_jobs
+            )
+        return self._run_train_window_sequential(candidates, train_data, warmup_n)
+
+    def _run_train_window_sequential(
+        self,
+        candidates: list[dict],
+        train_data: pd.DataFrame,
+        warmup_n: int,
+    ) -> dict:
+        """Sequential candidate evaluation (original behaviour)."""
+        from .runner import BacktestRunnerImpl
+
         best_params = candidates[0]
         best_score = float("-inf")
 
         for params in candidates:
             strategy = self.strategy_class(**params)
-            warmup_n = strategy.warmup_period
             runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
 
             try:
@@ -328,22 +416,61 @@ class WalkForwardOptimizer:
             ]
             trades = result["trades"]
 
-            # Apply warmup buffer
             if warmup_n > 0 and len(train_data) > warmup_n:
                 cutoff = train_data.index[warmup_n]
                 portfolio_history, trades = _filter_by_warmup(
                     portfolio_history, trades, cutoff
                 )
 
-            # Apply min_trades guard
-            if len(trades) < self.min_trades:
-                score = float("-inf")
-            else:
-                score = self._objective_fn(portfolio_history, trades)
+            score = (
+                float("-inf")
+                if len(trades) < self.min_trades
+                else self._objective_fn(portfolio_history, trades)
+            )
 
             if score > best_score:
                 best_score = score
                 best_params = params
+
+        return {"best_params": best_params, "objective_score": best_score}
+
+    def _run_train_window_parallel(
+        self,
+        candidates: list[dict],
+        train_data: pd.DataFrame,
+        warmup_n: int,
+        n_workers: int,
+    ) -> dict:
+        """Parallel candidate evaluation using ProcessPoolExecutor."""
+        best_params = candidates[0]
+        best_score = float("-inf")
+
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            future_to_params = {
+                executor.submit(
+                    _run_candidate_worker,
+                    self.strategy_class,
+                    params,
+                    train_data,
+                    warmup_n,
+                    self.min_trades,
+                    self._objective_key,
+                ): params
+                for params in candidates
+            }
+            for future in as_completed(future_to_params):
+                params = future_to_params[future]
+                try:
+                    score = future.result()
+                except Exception as exc:
+                    logger.warning(
+                        "Parallel candidate failed (params=%s): %s", params, exc
+                    )
+                    score = float("-inf")
+
+                if score > best_score:
+                    best_score = score
+                    best_params = params
 
         return {"best_params": best_params, "objective_score": best_score}
 

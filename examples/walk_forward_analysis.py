@@ -1,16 +1,18 @@
 """Walk-Forward Analysis: optimise RSI parameters and validate out-of-sample.
 
 Divides 8 years of data into 1-year training windows and 3-month test windows.
-For each window, RandomSearch finds the best RSI period and bounds. The stitched
-out-of-sample equity curve is plotted to output/.
+For each window, RandomSearch finds the best RSI period and bounds. Three plots
+are saved to output/: equity curve, parameter stability, and per-window metrics.
+
+Pass n_jobs > 1 (or -1 for all CPUs) to evaluate candidates in parallel:
 
 Usage:
     python examples/walk_forward_analysis.py
     python examples/walk_forward_analysis.py SPY 2016-01-01 2024-01-01
+    python examples/walk_forward_analysis.py AAPL 2016-01-01 2024-01-01 -1
 """
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import yfinance as yf
@@ -18,6 +20,7 @@ import yfinance as yf
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.optimization import RandomSearch, WalkForwardOptimizer
+from backtest.reporting import save_wfa_report
 from backtest.strategy import RSIStrategy
 
 
@@ -44,6 +47,7 @@ def main():
     ticker = sys.argv[1] if len(sys.argv) > 1 else "AAPL"
     start = sys.argv[2] if len(sys.argv) > 2 else "2016-01-01"
     end = sys.argv[3] if len(sys.argv) > 3 else "2024-01-01"
+    n_jobs = int(sys.argv[4]) if len(sys.argv) > 4 else 1
 
     train_size = 252    # 1 year
     test_size = 63      # 1 quarter
@@ -69,12 +73,15 @@ def main():
         searcher=RandomSearch(n=40, seed=42),
         objective="sharpe_ratio",
         min_trades=3,
+        n_jobs=n_jobs,
     )
 
+    jobs_label = "all CPUs" if n_jobs == -1 else f"{n_jobs} worker(s)"
     print("Running Walk-Forward Analysis...")
     print(f"  Parameter space : {sum(len(v) for v in param_space.values())} values across {len(param_space)} params")
     print("  Search          : RandomSearch(n=40, seed=42)")
-    print(f"  Windows         : {train_size}-bar train / {test_size}-bar test\n")
+    print(f"  Windows         : {train_size}-bar train / {test_size}-bar test")
+    print(f"  Parallel        : {jobs_label}\n")
 
     result = optimizer.run()
 
@@ -104,34 +111,20 @@ def main():
     print(f"  Param stability  : {s['param_stability'] * 100:.0f}% of windows used the same params")
     print(f"  Best params      : {result.best_params_overall}")
 
-    # --- Save equity curve plot ---
+    # --- Save all three WFA plots ---
     try:
-        import plotly.graph_objects as go
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=result.equity_curve.index,
-            y=result.equity_curve * (start_capital / result.equity_curve.iloc[0]),
-            name="WFA out-of-sample",
-            line=dict(color="royalblue"),
-        ))
-        fig.update_layout(
-            title=f"Walk-Forward Analysis — {ticker} RSI ({start} to {end})",
-            xaxis_title="Date",
-            yaxis_title="Portfolio Value ($)",
-            hovermode="x unified",
-            width=1200,
-            height=600,
-        )
-
         output_dir = Path(__file__).parent.parent / "output"
-        output_dir.mkdir(exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%dT%H%M")
-        output_path = output_dir / f"wfa_{ticker.lower()}_{ts}.png"
-        fig.write_image(str(output_path), engine="kaleido")
-        print(f"\nEquity curve saved to: {output_path}")
+        written = save_wfa_report(
+            result,
+            output_dir=output_dir,
+            prefix=f"wfa_{ticker.lower()}",
+            start_capital=start_capital,
+        )
+        print("\nPlots saved:")
+        for path in written:
+            print(f"  {path}")
     except Exception as exc:
-        print(f"\nCould not save plot: {exc}")
+        print(f"\nCould not save plots: {exc}")
 
 
 if __name__ == "__main__":

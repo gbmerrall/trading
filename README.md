@@ -58,11 +58,14 @@ each value. Helps identify stable parameter regions before optimising.
 ```bash
 python examples/walk_forward_analysis.py
 python examples/walk_forward_analysis.py SPY 2016-01-01 2024-01-01
+python examples/walk_forward_analysis.py AAPL 2016-01-01 2024-01-01 -1   # all CPUs
 ```
 
 WFA repeatedly optimises RSI parameters on a 1-year training window and validates on the
-following 3-month test window. Prints per-window results, overall out-of-sample metrics,
-and saves an equity curve plot to `output/`.
+following 3-month test window. Prints per-window results and overall out-of-sample metrics.
+Saves three plots to `output/`: chained equity curve, parameter stability, and per-window
+metric bars. Pass a 4th argument to control parallel candidate evaluation (`-1` = all CPUs,
+`2` = 2 workers, `1` = sequential).
 
 ### 5. Ensemble strategy
 
@@ -129,7 +132,22 @@ as a custom objective.
 window and evaluates out-of-sample on the following test window. Results include a stitched
 equity curve, per-window metrics, and the most stable parameter set across all windows.
 
-See [Getting Started](#2-optimise-parameters-with-walk-forward-analysis) above for usage.
+Pass `n_jobs=-1` to evaluate parameter candidates in parallel using all available CPUs.
+Custom callable objectives fall back to sequential automatically.
+
+`backtest.reporting` turns a `WalkForwardResult` into three plotly figures:
+
+```python
+from backtest.reporting import plot_equity_curve, plot_parameter_stability, plot_metrics_by_window, save_wfa_report
+
+fig = plot_equity_curve(result, chain=True, start_capital=10_000)
+fig.show()
+
+# Or save all three plots at once:
+save_wfa_report(result, output_dir="output", prefix="my_run")
+```
+
+See [Getting Started](#4-walk-forward-analysis) above for usage.
 
 ---
 

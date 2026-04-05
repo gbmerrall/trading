@@ -674,3 +674,93 @@ class TestWalkForwardResult:
         assert result.summary["param_stability"] >= 0.5, (
             f"Expected param_stability >= 0.5, got {result.summary['param_stability']}"
         )
+
+
+class TestParallelOptimization:
+    """Tests for WalkForwardOptimizer n_jobs parameter."""
+
+    def _make_oscillating_data(self, n=400):
+        import math
+        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+        prices = [100.0 + 10 * math.sin(i * math.pi / 3) for i in range(n)]
+        return pd.DataFrame({"Close": prices}, index=dates)
+
+    def _make_optimizer(self, data, n_jobs=1):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        return WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2, 3]},
+            data=data,
+            train_size=150,
+            test_size=50,
+            window_type="sliding",
+            min_trades=0,
+            objective="sharpe_ratio",
+            n_jobs=n_jobs,
+        )
+
+    def test_invalid_n_jobs_zero_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        from backtest.validation import ValidationError
+        data = self._make_oscillating_data()
+        with pytest.raises(ValidationError, match="n_jobs"):
+            WalkForwardOptimizer(
+                strategy_class=ConsecutiveDaysStrategy,
+                param_space={"consecutive_days": [1, 2]},
+                data=data,
+                train_size=150,
+                test_size=50,
+                n_jobs=0,
+            )
+
+    def test_invalid_n_jobs_negative_raises(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        from backtest.validation import ValidationError
+        data = self._make_oscillating_data()
+        with pytest.raises(ValidationError, match="n_jobs"):
+            WalkForwardOptimizer(
+                strategy_class=ConsecutiveDaysStrategy,
+                param_space={"consecutive_days": [1, 2]},
+                data=data,
+                train_size=150,
+                test_size=50,
+                n_jobs=-2,
+            )
+
+    def test_n_jobs_2_produces_same_best_params_as_sequential(self):
+        """Parallel evaluation must select the same winner as sequential."""
+        data = self._make_oscillating_data()
+        seq_result = self._make_optimizer(data, n_jobs=1).run()
+        par_result = self._make_optimizer(data, n_jobs=2).run()
+        assert seq_result.best_params_overall == par_result.best_params_overall
+
+    def test_n_jobs_minus1_runs_without_error(self):
+        data = self._make_oscillating_data()
+        result = self._make_optimizer(data, n_jobs=-1).run()
+        from backtest.optimization import WalkForwardResult
+        assert isinstance(result, WalkForwardResult)
+
+    def test_custom_callable_with_n_jobs_falls_back_to_sequential(self):
+        """A custom callable objective must still work when n_jobs > 1."""
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        data = self._make_oscillating_data()
+        # Custom callable: not a named METRICS key — parallel would need pickling
+        custom_obj = lambda ph, t: float(len(t))  # noqa: E731
+        opt = WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2, 3]},
+            data=data,
+            train_size=150,
+            test_size=50,
+            min_trades=0,
+            objective=custom_obj,
+            n_jobs=2,
+        )
+        # Should not raise — falls back to sequential because _objective_key is None
+        result = opt.run()
+        from backtest.optimization import WalkForwardResult
+        assert isinstance(result, WalkForwardResult)
