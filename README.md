@@ -27,101 +27,69 @@ pip install -r requirements.txt
 
 ### 1. Run a basic backtest
 
-```python
-import yfinance as yf
-from backtest.runner import BacktestRunnerImpl
-from backtest.strategy import RSIStrategy
-from backtest.benchmarks import BuyAndHold, DollarCostAveraging
-
-# Download historical data
-data = yf.download("AAPL", start="2020-01-01", end="2024-01-01")
-
-# Set up the strategy and benchmarks
-strategy = RSIStrategy(period=14, lower_bound=30, upper_bound=70)
-benchmarks = [BuyAndHold(), DollarCostAveraging()]
-
-# Run the backtest
-runner = BacktestRunnerImpl(strategy=strategy, benchmarks=benchmarks)
-result = runner.run(data, start_capital=10_000.0)
-
-# Inspect results
-print(result["strategy_metrics"])
-# {'total_return': 0.43, 'win_rate': 0.52, 'num_trades': 38, 'max_drawdown': -0.18}
-
-for name, metrics in result["benchmark_metrics"].items():
-    print(f"{name}: {metrics}")
+```bash
+python examples/basic_backtest.py
 ```
 
-### 2. Optimise parameters with Walk-Forward Analysis
+RSI(14) vs Buy & Hold, SPY, and DCA on AAPL over 5 years. Prints a metric
+summary and final portfolio value.
 
-Walk-Forward Analysis (WFA) repeatedly optimises on a training window and validates on a
-held-out test window. The stitched test results form a realistic out-of-sample equity curve.
+### 2. Compare all strategies side by side
 
-```python
-import yfinance as yf
-from backtest.optimization import WalkForwardOptimizer, RandomSearch
-from backtest.strategy import RSIStrategy
-
-data = yf.download("AAPL", start="2015-01-01", end="2024-01-01")
-
-optimizer = WalkForwardOptimizer(
-    strategy_class=RSIStrategy,
-    param_space={
-        "period":      [7, 14, 21],
-        "lower_bound": [25, 30, 35],
-        "upper_bound": [65, 70, 75],
-    },
-    data=data,
-    train_size=252,   # 1 year of training data
-    test_size=63,     # 1 quarter of test data
-    window_type="sliding",
-    searcher=RandomSearch(n=50, seed=42),
-    objective="sharpe_ratio",
-    min_trades=5,
-)
-
-result = optimizer.run()
-
-print(result.summary)
-print(result.best_params_overall)
-# {'period': 14, 'lower_bound': 30, 'upper_bound': 70}
-
-# Per-window breakdown
-print(result.windows[["test_start", "best_params", "sharpe_ratio", "n_trades"]])
-
-# Plot the out-of-sample equity curve
-result.equity_curve.plot(title="WFA Out-of-Sample Equity Curve")
+```bash
+python examples/compare_strategies.py           # defaults: AAPL 2020–2024
+python examples/compare_strategies.py MSFT 2018-01-01 2024-01-01
 ```
 
-### 3. Available objective metrics
+Runs every built-in strategy on the same data and prints a table ranked by total return.
+
+### 3. Parameter sensitivity sweep
+
+```bash
+python examples/parameter_sensitivity.py
+python examples/parameter_sensitivity.py SPY 2018-01-01 2024-01-01
+```
+
+Sweeps RSI period from 5 to 30, printing Sharpe, Sortino, Calmar, and trade count at
+each value. Helps identify stable parameter regions before optimising.
+
+### 4. Walk-Forward Analysis
+
+```bash
+python examples/walk_forward_analysis.py
+python examples/walk_forward_analysis.py SPY 2016-01-01 2024-01-01
+```
+
+WFA repeatedly optimises RSI parameters on a 1-year training window and validates on the
+following 3-month test window. Prints per-window results, overall out-of-sample metrics,
+and saves an equity curve plot to `output/`.
+
+### 5. Ensemble strategy
+
+```bash
+python examples/ensemble_strategy.py
+python examples/ensemble_strategy.py MSFT 2019-01-01 2024-01-01
+```
+
+Combines RSI, MACD, and Bollinger Bands into an ensemble that signals only when at least
+2 of 3 strategies agree. Compares the ensemble against each constituent and Buy & Hold.
+
+### Available objective metrics
 
 The following metrics can be passed as the `objective` parameter to `WalkForwardOptimizer`,
-or called directly for custom analysis:
+or called directly from `backtest.metrics`:
 
 ```python
-from backtest.metrics import sharpe_ratio, calmar_ratio, METRICS
+from backtest.metrics import METRICS
 
-# Call directly
-score = sharpe_ratio(portfolio_history, trades)
-
-# Or use the registry
-score = METRICS["sortino_ratio"](portfolio_history, trades)
-
-# All built-in metrics
 print(list(METRICS.keys()))
 # ['total_return', 'cagr', 'sharpe_ratio', 'sortino_ratio', 'calmar_ratio',
 #  'max_drawdown', 'ulcer_index', 'profit_factor', 'win_rate', 'expectancy',
 #  'recovery_factor']
 ```
 
-You can also pass any callable with the signature `(portfolio_history, trades) -> float`:
-
-```python
-optimizer = WalkForwardOptimizer(
-    ...,
-    objective=lambda ph, t: len(t) / max(1, abs(t[0]["pnl"])),  # custom metric
-)
-```
+You can also pass any callable with the signature `(portfolio_history, trades) -> float`
+as a custom objective.
 
 ---
 
