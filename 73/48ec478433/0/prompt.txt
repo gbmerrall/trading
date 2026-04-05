@@ -116,3 +116,7 @@ can you clarify something for me
 When I run a test e.g. bh_runner = BacktestRunnerImpl(strategy=ConsecutiveDaysStrategy(consecutive_days=252), benchmarks=[BuyAndHold()])
 
 The max days is 252. What's the reason behind that. Seems an strange number to limit to
+
+---
+
+i think I do so can you update things for me'
