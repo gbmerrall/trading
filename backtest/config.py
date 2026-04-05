@@ -7,7 +7,7 @@ replacing magic numbers with named constants and providing configurable defaults
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from pathlib import Path
 
 from .constants import TradingConstants, ValidationLimits

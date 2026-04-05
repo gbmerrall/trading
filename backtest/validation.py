@@ -5,7 +5,7 @@ import numpy as np
 from typing import Any, Optional
 import numbers
 
-from .constants import ValidationLimits, TradingConstants
+from .constants import ValidationLimits
 
 
 class ValidationError(ValueError):
