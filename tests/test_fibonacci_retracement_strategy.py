@@ -1,11 +1,5 @@
-import os
-import sys
-
 import pandas as pd
 import pytest
-
-# Add project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.strategy import FibonacciRetracementStrategy
 from backtest.validation import ValidationError

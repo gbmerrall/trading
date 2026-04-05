@@ -1,10 +1,6 @@
 import pytest
 import pandas as pd
 
-# Add project root to the Python path
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.strategy import ConsecutiveDaysStrategy
 

@@ -2,10 +2,6 @@ import pytest
 import pandas as pd
 import numpy as np
 
-# Add project root to the Python path
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.validation import (
     ValidationError, validate_dataframe, validate_price_data, 

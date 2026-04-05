@@ -3,10 +3,6 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 
-# Add project root to the Python path
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.benchmarks import BuyAndHold, SPYBuyAndHold, DollarCostAveraging
 

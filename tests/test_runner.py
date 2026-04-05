@@ -1,13 +1,9 @@
-import pytest
-import pandas as pd
-import os
-import yfinance as yf
-import numpy as np
-from unittest.mock import patch, MagicMock
 
-# Add project root to the Python path
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import numpy as np
+import pandas as pd
+import pytest
+import yfinance as yf
+from unittest.mock import MagicMock, patch
 
 from backtest.runner import BacktestRunnerImpl
 from backtest.strategy import ConsecutiveDaysStrategy

@@ -1,10 +1,6 @@
 import pytest
 import pandas as pd
 
-# Add the project root directory to the Python path
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.portfolio import Portfolio, Transaction, Position
 from backtest.validation import ValidationError
