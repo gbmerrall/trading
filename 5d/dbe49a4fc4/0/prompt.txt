@@ -1,0 +1,685 @@
+I'd like you to review this code. Start with @CLAUDE.md and the other markdown files in this directory. Then look for any opportunities for improvement, rafactoring, optimisation along with dead code or any code smells etc. Report your findings
+
+---
+
+OK test stuff is installed
+
+---
+
+please fix all issues starting with critical. After each fix, please commit.
+
+---
+
+yes please
+
+---
+
+Was Walk-Forward Analysis implemented?
+
+---
+
+well! Seems like we need to get on it. Please commence implementation. WHat information do you need to start?
+
+---
+
+Total Return/CAGR for profit; Sharpe, Sortino, and Calmar for risk-adjusted returns; Max Drawdown and Ulcer Index for risk; and
+  Profit Factor, Win Rate, Expectancy, and Recovery Factor for efficiency and recovery
+
+Too much?
+
+---
+
+both please
+
+---
+
+Both I think
+
+---
+
+B please
+
+---
+
+B please
+
+---
+
+yes
+
+---
+
+seems fine. proceed
+
+---
+
+seems fine. proceed
+
+---
+
+yes please
+
+---
+
+The spec states: "The method signature and return dict keys are unchanged; existing tests pass without modification."
+  Currently, tests/test_runner.py asserts the existence of exactly four keys: total_return, win_rate, num_trades, and max_drawdown. When we refactor
+  runner._calculate_metrics() to call metrics.py, we must ensure it still returns exactly that dictionary structure, rather than dumping all 10 metrics into the
+  standard backtest result (which could break downstream consumers or tests).
+
+---
+
+sort of side question: Since this is computationally heavy, is there any GPU related improvement we could add? No is a valid answer :)
+
+---
+
+yes please
+
+---
+
+I've implemented the implementation plan. Please do a comprehensive review
+
+---
+
+not bad. yes please
+
+---
+
+can you please updated @README.md with a few things
+1. Tidy up the strategies section including adding walk-forward 
+2. Add an install section at the top. Don't use uv, just document creating a venv and using requirements.txt
+3. Add a brief getting started tutorial
+
+---
+
+I believe that phase 4 in @IMPLEMENTATION_PLAN.md is already done?
+
+---
+
+what's required for that?
+
+---
+
+before we do that I want to really beef up @examples. Remove the existing @examples/run_backtest.py and come up with a bunch of useful example scripts people can take down and use
+
+---
+
+can you explain why @main.py keeps showing up?
+
+---
+
+Let's now update those 2 items from Phase 5 we discussed. Update README.md and examples if relevant
+
+---
+
+can you clarify something for me
+
+When I run a test e.g. bh_runner = BacktestRunnerImpl(strategy=ConsecutiveDaysStrategy(consecutive_days=252), benchmarks=[BuyAndHold()])
+
+The max days is 252. What's the reason behind that. Seems an strange number to limit to
+
+---
+
+i think I do so can you update things for me'
+
+---
+
+I think I'm coming across some bugs. 
+
+1. When I download more than 252 days of training data and use the consecutive days strategy 
+bh_runner = BacktestRunnerImpl(strategy=ConsecutiveDaysStrategy(consecutive_days=252), benchmarks=[BuyAndHold()])
+
+The
+
+---
+
+When I download more than 252 days of training data and use the consecutive days strategy 
+e.g. 
+start_date = "2022-11-01"
+end_date = "2024-01-01"
+
+bh_runner = BacktestRunnerImpl(strategy=ConsecutiveDaysStrategy(consecutive_days=252), benchmarks=[BuyAndHold()])
+
+The date range  of the simulation is 2022-11-01 to 2023-12-29. 
+
+My expecatation would the start date would be end_date-consecutive_days but I can see good cases for either 
+
+What are your thoughts?
+
+---
+
+I think so yes
+
+---
+
+Now in the walk-forward test
+
+from backtest.optimization import RandomSearch, WalkForwardOptimizer
+from backtest.reporting import plot_equity_curve, plot_parameter_stability
+
+train_size = 252 # 1 year
+test_size = 63   # 3 months
+
+# Define the parameter grid to search
+param_space = {
+    "period": [7, 10, 14, 20, 28],
+    "lower_bound": [20, 25, 30, 35],
+    "upper_bound": [65, 70, 75, 80],
+}
+
+optimizer = WalkForwardOptimizer(
+    strategy_class=RSIStrategy,
+    param_space=param_space,
+    data=data,
+    train_size=train_size,
+    test_size=test_size,
+    window_type="sliding",
+    searcher=RandomSearch(n=20, seed=42), 
+    objective="sharpe_ratio",
+    min_trades=3,
+    n_jobs=-1,
+)
+
+print("Running Walk-Forward Analysis...")
+wfa_result = optimizer.run()
+
+# Print overall Summary
+s = wfa_result.summary
+print("\n--- Overall Out-of-Sample Performance ---")
+print(f"Sharpe Ratio:    {s['sharpe_ratio']:.2f}")
+print(f"Total Return:    {s['total_return']*100:+.1f}%")
+print(f"Max Drawdown:    {s['max_drawdown']*100:.1f}%")
+print(f"Win Rate:        {s['win_rate']*100:.1f}%")
+
+ValidationError: train_size (252) + test_size (63) = 315 exceeds data length (271)
+
+---
+
+ah OK so I need to fetch more data (315 days min) for the WFA, then only use 252 of that in the ConsecutiveDaysStrategy ?
+
+---
+
+let's try a different approach. Can you create a standalone script out of @bhp_strategy_analysis.ipynb and we'll look at the results together
+
+---
+
+First the backtesting
+Strategy                  Start        End            Return   Drawdown    Win%  Trades
+---------------------------------------------------------------------------------------
+RSI(14, 30/70)            2022-01-24   2023-12-29     +63.3%     -15.4%  100.0%       3
+ConsecutiveDays(3)        2022-01-06   2023-12-29     +54.3%     -18.5%   63.2%      19
+BollingerBands(20)        2022-02-01   2023-12-29     +38.9%     -14.2%  100.0%       4
+MACD(12/26/9)             2022-02-23   2023-12-29     +21.4%     -20.6%   45.0%      20
+MeanReversion             2022-02-01   2023-12-29     +19.1%     -30.3%  100.0%       2
+Gap(2%)                   2022-01-04   2023-12-29     +11.7%     -22.8%   53.3%      30
+Breakout(20d)             2022-02-01   2023-12-29      +6.4%     -27.2%   33.3%       9
+Fibonacci(20d)            2022-02-01   2023-12-29      +4.2%     -31.8%   37.5%       8
+Momentum(ROC-12)          2022-01-20   2023-12-29      +3.8%     -28.5%   40.0%      10
+MovingAvgCrossover        2022-03-16   2023-12-29      +1.6%     -26.2%   42.9%       7
+ParabolicSAR              2022-01-04   2023-12-29      +0.9%     -31.6%   50.0%      22
+Volatility(ATR-14)        2022-02-01   2023-12-29      +0.0%       0.0%    0.0%       0
+---------------------------------------------------------------------------------------
+Buy & Hold (benchmark)    2022-01-04   2023-12-29     +47.6%     -31.8%    n/a     n/a
+
+---
+
+Running Walk-Forward Analysis on RSIStrategy...
+  Data: 501 bars  |  Windows: 252-bar train / 63-bar test
+
+Per-window results:
+  Test period              Best params                           Sharpe   Return  Trades
+  --------------------------------------------------------------------------------------
+  2023-01-04 -> 2023-04-04 p=7 lo=35 hi=75                        -0.09    -1.1%       1
+  2023-04-05 -> 2023-07-06 p=7 lo=20 hi=80                         -inf    +0.0%       0
+  2023-07-07 -> 2023-10-04 p=7 lo=35 hi=75                        -0.34    -2.2%       1
+
+Overall out-of-sample performance:
+  Sharpe ratio  : -0.08
+  Total return  : -2.2%
+  Max drawdown  : -11.8%
+  Win rate      : 0.0%
+  Windows       : 3 (2 with trades)
+  Best params   : {'lower_bound': 35, 'period': 7, 'upper_bound': 75}
+
+---
+
+Downloading BHP (2015-01-01 to 2026-01-01)...
+  2766 trading days loaded.
+
+Running strategy comparison...
+
+Strategy                  Start        End            Return   Drawdown    Win%  Trades
+---------------------------------------------------------------------------------------
+BollingerBands(20)        2015-02-02   2025-12-31    +252.1%     -45.2%   76.5%      34
+RSI(14, 30/70)            2015-01-23   2025-12-31    +155.1%     -54.9%   90.9%      11
+MeanReversion             2015-02-02   2025-12-31    +131.8%     -51.3%   90.0%      10
+ParabolicSAR              2015-01-05   2025-12-31     +81.1%     -47.6%   49.6%     119
+MACD(12/26/9)             2015-02-24   2025-12-31     +52.3%     -38.3%   44.1%     111
+Breakout(20d)             2015-02-02   2025-12-31     +30.4%     -40.6%   36.4%      44
+ConsecutiveDays(3)        2015-01-07   2025-12-31     +25.4%     -49.3%   57.7%      97
+Volatility(ATR-14)        2015-02-02   2025-12-31      +0.0%       0.0%    0.0%       0
+MovingAvgCrossover        2015-03-17   2025-12-31      -7.6%     -56.9%   42.9%      35
+Gap(2%)                   2015-01-05   2025-12-31     -10.4%     -58.5%   58.6%     128
+Momentum(ROC-12)          2015-01-21   2025-12-31     -32.9%     -51.0%   32.2%      59
+Fibonacci(20d)            2015-02-02   2025-12-31     -45.9%     -55.0%   43.6%      39
+---------------------------------------------------------------------------------------
+Buy & Hold (benchmark)    2015-01-05   2025-12-31    +197.3%     -59.5%    n/a     n/a
+
+---
+
+yes please
+
+---
+
+Running Walk-Forward Analysis on BollingerBandsStrategy...
+  Data: 2766 bars  |  Windows: 252-bar train / 63-bar test
+
+Per-window results:
+  Test period              Best params                           Sharpe   Return  Trades
+  --------------------------------------------------------------------------------------
+  2016-01-04 -> 2016-04-04 p=30 lo=None hi=None                    -inf    +0.0%       0
+  2016-04-05 -> 2016-07-01 p=10 lo=None hi=None                    0.83    +4.1%       1
+  2016-07-05 -> 2016-09-30 p=10 lo=None hi=None                    1.85    +7.4%       1
+  2016-10-03 -> 2016-12-30 p=10 lo=None hi=None                   -0.99    -1.7%       1
+  2017-01-03 -> 2017-04-03 p=25 lo=None hi=None                   -0.84    -3.6%       1
+  2017-04-04 -> 2017-07-03 p=30 lo=None hi=None                    5.45    +7.4%       1
+  2017-07-05 -> 2017-10-02 p=25 lo=None hi=None                    -inf    +0.0%       0
+  2017-10-03 -> 2018-01-02 p=15 lo=None hi=None                    -inf    +0.0%       0
+  2018-01-03 -> 2018-04-04 p=15 lo=None hi=None                   -0.25    -2.2%       2
+  2018-04-05 -> 2018-07-03 p=15 lo=None hi=None                   -0.34    -1.5%       1
+  2018-07-05 -> 2018-10-02 p=10 lo=None hi=None                    2.07    +7.4%       2
+  2018-10-03 -> 2019-01-03 p=10 lo=None hi=None                    0.90    +4.4%       2
+  2019-01-04 -> 2019-04-04 p=10 lo=None hi=None                    2.55    +4.6%       2
+  2019-04-05 -> 2019-07-05 p=30 lo=None hi=None                    -inf    +0.0%       0
+  2019-07-08 -> 2019-10-03 p=25 lo=None hi=None                    2.06    +5.4%       1
+  2019-10-04 -> 2020-01-03 p=30 lo=None hi=None                    -inf    +0.0%       0
+  2020-01-06 -> 2020-04-03 p=20 lo=None hi=None                   -1.63   -27.8%       1
+  2020-04-06 -> 2020-07-06 p=10 lo=None hi=None                    2.42    +7.7%       1
+  2020-07-07 -> 2020-10-02 p=20 lo=None hi=None                   -2.26    -2.3%       1
+  2020-10-05 -> 2021-01-04 p=10 lo=None hi=None                    4.30   +12.4%       1
+  2021-01-05 -> 2021-04-06 p=20 lo=None hi=None                    2.45   +10.0%       2
+  2021-04-07 -> 2021-07-06 p=10 lo=None hi=None                   -0.50    -2.4%       1
+  2021-07-07 -> 2021-10-04 p=20 lo=None hi=None                   -2.98   -13.2%       1
+  2021-10-05 -> 2022-01-03 p=25 lo=None hi=None                    -inf    +0.0%       0
+  2022-01-04 -> 2022-04-04 p=15 lo=None hi=None                    -inf    +0.0%       0
+  2022-04-05 -> 2022-07-06 p=10 lo=None hi=None                    0.32    +1.0%       1
+  2022-07-07 -> 2022-10-04 p=10 lo=None hi=None                    3.75    +9.7%       1
+  2022-10-05 -> 2023-01-04 p=30 lo=None hi=None                    -inf    +0.0%       0
+  2023-01-05 -> 2023-04-05 p=30 lo=None hi=None                   -0.01    -0.7%       1
+  2023-04-06 -> 2023-07-07 p=15 lo=None hi=None                    4.00   +13.9%       2
+  2023-07-10 -> 2023-10-05 p=10 lo=None hi=None                   -1.15    -4.1%       2
+  2023-10-06 -> 2024-01-05 p=25 lo=None hi=None                    -inf    +0.0%       0
+  2024-01-08 -> 2024-04-08 p=10 lo=None hi=None                   -0.82    -2.6%       1
+  2024-04-09 -> 2024-07-09 p=25 lo=None hi=None                    3.81    +5.8%       1
+  2024-07-10 -> 2024-10-07 p=25 lo=None hi=None                    3.83   +11.9%       2
+  2024-10-08 -> 2025-01-07 p=25 lo=None hi=None                   -2.83    -8.4%       1
+  2025-01-08 -> 2025-04-09 p=20 lo=None hi=None                   -0.94    -7.3%       1
+  2025-04-10 -> 2025-07-11 p=30 lo=None hi=None                    4.15   +11.2%       1
+  2025-07-14 -> 2025-10-09 p=25 lo=None hi=None                    3.19    +7.5%       1
+
+Overall out-of-sample performance:
+  Sharpe ratio  : 0.18
+  Total return  : +7.5%
+  Max drawdown  : -43.2%
+  Win rate      : 57.9%
+  Windows       : 39 (30 with trades)
+  Best params   : {'period': 10, 'std_dev': 2.0}
+
+---
+
+let's try ParabolicSAR
+
+---
+
+are you interested in what the graphs show?
+
+---
+
+Running Walk-Forward Analysis on ParabolicSARStrategy...
+  Data: 2766 bars  |  Windows: 252-bar train / 63-bar test
+
+Per-window results:
+  Test period              Best params                           Sharpe   Return  Trades
+  --------------------------------------------------------------------------------------
+  2016-01-04 -> 2016-04-04 af=0.08 max_af=0.2                     -0.68    -9.5%       6
+  2016-04-05 -> 2016-07-01 af=0.03 max_af=0.2                      0.39    +1.8%       5
+  2016-07-05 -> 2016-09-30 af=0.03 max_af=0.25                     1.49    +8.3%       4
+  2016-10-03 -> 2016-12-30 af=0.03 max_af=0.25                    -2.08    -9.7%       3
+  2017-01-03 -> 2017-04-03 af=0.03 max_af=0.25                    -1.10    -4.1%       3
+  2017-04-04 -> 2017-07-03 af=0.03 max_af=0.25                    -2.89   -10.8%       5
+  2017-07-05 -> 2017-10-02 af=0.03 max_af=0.2                      0.73    +2.1%       3
+  2017-10-03 -> 2018-01-02 af=0.08 max_af=0.15                     1.02    +3.8%       6
+  2018-01-03 -> 2018-04-04 af=0.08 max_af=0.1                     -2.00    -7.2%       4
+  2018-04-05 -> 2018-07-03 af=0.08 max_af=0.1                     -0.91    -4.6%       4
+  2018-07-05 -> 2018-10-02 af=0.08 max_af=0.25                     2.87   +11.4%       4
+  2018-10-03 -> 2019-01-03 af=0.08 max_af=0.25                    -1.08    -6.3%       6
+  2019-01-04 -> 2019-04-04 af=0.08 max_af=0.25                     2.77   +11.1%       7
+  2019-04-05 -> 2019-07-05 af=0.03 max_af=0.3                      1.98    +7.7%       4
+  2019-07-08 -> 2019-10-03 af=0.03 max_af=0.25                     1.46    +4.3%       3
+  2019-10-04 -> 2020-01-03 af=0.03 max_af=0.2                      0.96    +2.9%       5
+  2020-01-06 -> 2020-04-03 af=0.03 max_af=0.2                      1.57   +14.3%       3
+  2020-04-06 -> 2020-07-06 af=0.02 max_af=0.25                     1.52    +9.5%       3
+  2020-07-07 -> 2020-10-02 af=0.03 max_af=0.2                     -1.62    -6.9%       5
+  2020-10-05 -> 2021-01-04 af=0.05 max_af=0.15                     4.69   +27.9%       2
+  2021-01-05 -> 2021-04-06 af=0.05 max_af=0.15                     1.68    +8.5%       3
+  2021-04-07 -> 2021-07-06 af=0.05 max_af=0.25                    -1.42    -6.2%       5
+  2021-07-07 -> 2021-10-04 af=0.01 max_af=0.2                     -3.01   -16.1%       1
+  2021-10-05 -> 2022-01-03 af=0.08 max_af=0.1                      0.31    +1.0%       3
+  2022-01-04 -> 2022-04-04 af=0.08 max_af=0.1                      2.05   +13.5%       4
+  2022-04-05 -> 2022-07-06 af=0.08 max_af=0.25                    -0.32    -2.9%       4
+  2022-07-07 -> 2022-10-04 af=0.08 max_af=0.25                     1.78   +10.8%       5
+  2022-10-05 -> 2023-01-04 af=0.08 max_af=0.25                     2.65   +16.6%       7
+  2023-01-05 -> 2023-04-05 af=0.08 max_af=0.2                     -0.59    -2.8%       5
+  2023-04-06 -> 2023-07-07 af=0.05 max_af=0.2                     -0.35    -1.6%       3
+  2023-07-10 -> 2023-10-05 af=0.05 max_af=0.2                     -1.65    -6.7%       5
+  2023-10-06 -> 2024-01-05 af=0.05 max_af=0.2                      2.36    +8.7%       4
+  2024-01-08 -> 2024-04-08 af=0.01 max_af=0.1                      0.45    +1.1%       2
+  2024-04-09 -> 2024-07-09 af=0.01 max_af=0.1                      0.68    +2.1%       2
+  2024-07-10 -> 2024-10-07 af=0.03 max_af=0.1                      1.74   +10.0%       2
+  2024-10-08 -> 2025-01-07 af=0.08 max_af=0.25                    -3.66   -11.2%       7
+  2025-01-08 -> 2025-04-09 af=0.05 max_af=0.2                     -2.75    -7.9%       5
+  2025-04-10 -> 2025-07-11 af=0.03 max_af=0.2                      0.08    +0.0%       3
+  2025-07-14 -> 2025-10-09 af=0.02 max_af=0.15                     0.36    +0.9%       2
+
+Overall out-of-sample performance:
+  Sharpe ratio  : 0.14
+  Total return  : +0.9%
+  Max drawdown  : -34.4%
+  Win rate      : 42.0%
+  Windows       : 39 (39 with trades)
+  Best params   : {'af': 0.08, 'max_af': 0.25}
+
+ [Image #9] [Image #10]
+
+---
+
+They both say +70.6% now
+Running Walk-Forward Analysis on ParabolicSARStrategy...
+  Data: 2766 bars  |  Windows: 252-bar train / 63-bar test
+
+Per-window results:
+  Test period              Best params                           Sharpe   Return  Trades
+  --------------------------------------------------------------------------------------
+  2016-01-04 -> 2016-04-04 af=0.08 max_af=0.2                     -0.68    -9.5%       6
+  2016-04-05 -> 2016-07-01 af=0.03 max_af=0.2                      0.39    +1.8%       5
+  2016-07-05 -> 2016-09-30 af=0.03 max_af=0.25                     1.49    +8.3%       4
+  2016-10-03 -> 2016-12-30 af=0.03 max_af=0.25                    -2.08    -9.7%       3
+  2017-01-03 -> 2017-04-03 af=0.03 max_af=0.25                    -1.10    -4.1%       3
+  2017-04-04 -> 2017-07-03 af=0.03 max_af=0.25                    -2.89   -10.8%       5
+  2017-07-05 -> 2017-10-02 af=0.03 max_af=0.2                      0.73    +2.1%       3
+  2017-10-03 -> 2018-01-02 af=0.08 max_af=0.15                     1.02    +3.8%       6
+  2018-01-03 -> 2018-04-04 af=0.08 max_af=0.1                     -2.00    -7.2%       4
+  2018-04-05 -> 2018-07-03 af=0.08 max_af=0.1                     -0.91    -4.6%       4
+  2018-07-05 -> 2018-10-02 af=0.08 max_af=0.25                     2.87   +11.4%       4
+  2018-10-03 -> 2019-01-03 af=0.08 max_af=0.25                    -1.08    -6.3%       6
+  2019-01-04 -> 2019-04-04 af=0.08 max_af=0.25                     2.77   +11.1%       7
+  2019-04-05 -> 2019-07-05 af=0.03 max_af=0.3                      1.98    +7.7%       4
+  2019-07-08 -> 2019-10-03 af=0.03 max_af=0.25                     1.46    +4.3%       3
+  2019-10-04 -> 2020-01-03 af=0.03 max_af=0.2                      0.96    +2.9%       5
+  2020-01-06 -> 2020-04-03 af=0.03 max_af=0.2                      1.57   +14.3%       3
+  2020-04-06 -> 2020-07-06 af=0.02 max_af=0.25                     1.52    +9.5%       3
+  2020-07-07 -> 2020-10-02 af=0.03 max_af=0.2                     -1.62    -6.9%       5
+  2020-10-05 -> 2021-01-04 af=0.05 max_af=0.15                     4.69   +27.9%       2
+  2021-01-05 -> 2021-04-06 af=0.05 max_af=0.15                     1.68    +8.5%       3
+  2021-04-07 -> 2021-07-06 af=0.05 max_af=0.25                    -1.42    -6.2%       5
+  2021-07-07 -> 2021-10-04 af=0.05 max_af=0.25                    -1.83    -9.3%       4
+  2021-10-05 -> 2022-01-03 af=0.08 max_af=0.1                      0.31    +1.0%       3
+  2022-01-04 -> 2022-04-04 af=0.08 max_af=0.1                      2.05   +13.5%       4
+  2022-04-05 -> 2022-07-06 af=0.08 max_af=0.25                    -0.32    -2.9%       4
+  2022-07-07 -> 2022-10-04 af=0.08 max_af=0.25                     1.78   +10.8%       5
+  2022-10-05 -> 2023-01-04 af=0.08 max_af=0.25                     2.65   +16.6%       7
+  2023-01-05 -> 2023-04-05 af=0.08 max_af=0.2                     -0.59    -2.8%       5
+  2023-04-06 -> 2023-07-07 af=0.05 max_af=0.2                     -0.35    -1.6%       3
+  2023-07-10 -> 2023-10-05 af=0.05 max_af=0.2                     -1.65    -6.7%       5
+  2023-10-06 -> 2024-01-05 af=0.05 max_af=0.2                      2.36    +8.7%       4
+  2024-01-08 -> 2024-04-08 af=0.05 max_af=0.25                     0.50    +1.4%       5
+  2024-04-09 -> 2024-07-09 af=0.01 max_af=0.1                     -0.03    -0.4%       2
+  2024-07-10 -> 2024-10-07 af=0.03 max_af=0.1                      1.74   +10.0%       2
+  2024-10-08 -> 2025-01-07 af=0.08 max_af=0.25                    -3.66   -11.2%       7
+  2025-01-08 -> 2025-04-09 af=0.05 max_af=0.2                     -2.75    -7.9%       5
+  2025-04-10 -> 2025-07-11 af=0.03 max_af=0.2                      0.08    +0.0%       3
+  2025-07-14 -> 2025-10-09 af=0.02 max_af=0.15                     0.36    +0.9%       2
+
+Overall out-of-sample performance:
+  Sharpe ratio  : 0.37
+  Total return  : +70.6%
+  Max drawdown  : -38.2%
+  Win rate      : 42.3%
+  Windows       : 39 (39 with trades)
+  Best params   : {'af': 0.08, 'max_af': 0.25}
+
+---
+
+here are the images from that run
+
+[Image #12] [Image #13]
+
+---
+
+the snarky buddy Vellum says "It's not a trategy it's a lottery". That made me laugh. Please go ahead with the tweak
+
+---
+
+Downloading BHP (2015-01-01 to 2026-01-01)...
+  2766 trading days loaded.
+
+Running strategy comparison...
+
+Strategy                  Start        End            Return   Drawdown    Win%  Trades
+---------------------------------------------------------------------------------------
+BollingerBands(20)        2015-02-02   2025-12-31    +252.1%     -45.2%   76.5%      34
+RSI(14, 30/70)            2015-01-23   2025-12-31    +155.1%     -54.9%   90.9%      11
+MeanReversion             2015-02-02   2025-12-31    +131.8%     -51.3%   90.0%      10
+ParabolicSAR              2015-01-05   2025-12-31     +75.2%     -49.2%   49.6%     119
+MACD(12/26/9)             2015-02-24   2025-12-31     +52.3%     -38.3%   44.1%     111
+Breakout(20d)             2015-02-02   2025-12-31     +30.4%     -40.6%   36.4%      44
+ConsecutiveDays(3)        2015-01-07   2025-12-31     +25.4%     -49.3%   57.7%      97
+Volatility(ATR-14)        2015-02-02   2025-12-31      +0.0%       0.0%    0.0%       0
+MovingAvgCrossover        2015-03-17   2025-12-31      -7.6%     -56.9%   42.9%      35
+Gap(2%)                   2015-01-05   2025-12-31     -10.4%     -58.5%   58.6%     128
+Momentum(ROC-12)          2015-01-21   2025-12-31     -32.9%     -51.0%   32.2%      59
+Fibonacci(20d)            2015-02-02   2025-12-31     -45.9%     -55.0%   43.6%      39
+---------------------------------------------------------------------------------------
+Buy & Hold (benchmark)    2015-01-05   2025-12-31    +197.3%     -59.5%    n/a     n/a
+
+Running Walk-Forward Analysis on ParabolicSARStrategy...
+  Data: 2766 bars  |  Windows: 252-bar train / 63-bar test
+
+Per-window results:
+  Test period              Best params                           Sharpe   Return  Trades
+  --------------------------------------------------------------------------------------
+  2016-01-04 -> 2016-04-04 af=0.08 max_af=0.2                     -0.68    -9.5%       6
+  2016-04-05 -> 2016-07-01 af=0.03 max_af=0.2                      0.39    +1.8%       5
+  2016-07-05 -> 2016-09-30 af=0.02 max_af=0.2                      1.42    +7.4%       3
+  2016-10-03 -> 2016-12-30 af=0.03 max_af=0.2                     -2.08    -9.7%       3
+  2017-01-03 -> 2017-04-03 af=0.01 max_af=0.2                     -1.75    -7.1%       3
+  2017-04-04 -> 2017-07-03 af=0.03 max_af=0.2                     -2.89   -10.8%       5
+  2017-07-05 -> 2017-10-02 af=0.03 max_af=0.2                      0.73    +2.1%       3
+  2017-10-03 -> 2018-01-02 af=0.05 max_af=0.2                      1.07    +4.0%       4
+  2018-01-03 -> 2018-04-04 af=0.08 max_af=0.2                     -1.69    -6.9%       6
+  2018-04-05 -> 2018-07-03 af=0.08 max_af=0.2                      3.04   +12.9%       4
+  2018-07-05 -> 2018-10-02 af=0.08 max_af=0.2                      2.87   +11.4%       4
+  2018-10-03 -> 2019-01-03 af=0.1 max_af=0.2                      -1.58    -7.7%       6
+  2019-01-04 -> 2019-04-04 af=0.1 max_af=0.2                       2.28    +9.6%       8
+  2019-04-05 -> 2019-07-05 af=0.03 max_af=0.2                      2.26    +8.9%       4
+  2019-07-08 -> 2019-10-03 af=0.03 max_af=0.2                      1.82    +5.7%       2
+  2019-10-04 -> 2020-01-03 af=0.03 max_af=0.2                      0.96    +2.9%       5
+  2020-01-06 -> 2020-04-03 af=0.03 max_af=0.2                      1.57   +14.3%       3
+  2020-04-06 -> 2020-07-06 af=0.02 max_af=0.2                      1.52    +9.5%       3
+  2020-07-07 -> 2020-10-02 af=0.03 max_af=0.2                     -1.62    -6.9%       5
+  2020-10-05 -> 2021-01-04 af=0.01 max_af=0.2                      4.41   +26.8%       1
+  2021-01-05 -> 2021-04-06 af=0.03 max_af=0.2                      1.68    +8.5%       3
+  2021-04-07 -> 2021-07-06 af=0.08 max_af=0.2                     -1.29    -5.6%       6
+  2021-07-07 -> 2021-10-04 af=0.01 max_af=0.2                     -3.01   -16.1%       1
+  2021-10-05 -> 2022-01-03 af=0.03 max_af=0.2                      0.32    +1.1%       3
+  2022-01-04 -> 2022-04-04 af=0.1 max_af=0.2                       3.77   +25.1%       5
+  2022-04-05 -> 2022-07-06 af=0.1 max_af=0.2                      -1.24    -9.7%       4
+  2022-07-07 -> 2022-10-04 af=0.1 max_af=0.2                       0.86    +4.7%       6
+  2022-10-05 -> 2023-01-04 af=0.05 max_af=0.2                      3.20   +22.5%       6
+  2023-01-05 -> 2023-04-05 af=0.08 max_af=0.2                     -0.59    -2.8%       5
+  2023-04-06 -> 2023-07-07 af=0.05 max_af=0.2                     -0.35    -1.6%       3
+  2023-07-10 -> 2023-10-05 af=0.05 max_af=0.2                     -1.65    -6.7%       5
+  2023-10-06 -> 2024-01-05 af=0.05 max_af=0.2                      2.36    +8.7%       4
+  2024-01-08 -> 2024-04-08 af=0.05 max_af=0.2                      0.50    +1.4%       5
+  2024-04-09 -> 2024-07-09 af=0.01 max_af=0.2                      0.68    +2.1%       2
+  2024-07-10 -> 2024-10-07 af=0.05 max_af=0.2                      2.68   +14.8%       3
+  2024-10-08 -> 2025-01-07 af=0.05 max_af=0.2                     -2.05    -7.0%       6
+  2025-01-08 -> 2025-04-09 af=0.05 max_af=0.2                     -2.75    -7.9%       5
+  2025-04-10 -> 2025-07-11 af=0.03 max_af=0.2                      0.08    +0.0%       3
+  2025-07-14 -> 2025-10-09 af=0.02 max_af=0.2                      0.36    +0.9%       2
+
+Overall out-of-sample performance:
+  Sharpe ratio  : 0.46
+  Total return  : +104.4%
+  Max drawdown  : -39.8%
+  Win rate      : 46.2%
+  Windows       : 39 (39 with trades)
+  Best params   : {'af': 0.03, 'max_af': 0.2}
+
+---
+
+[Image #15] [Image #16]  images...
+
+---
+
+So the goal of this proejct to come up with a trading strategy for companies from today onwards. For BHP what's the takeaway here?
+
+---
+
+fascinating. I just used BHP as essentially a random example as commodities are supposed to be more or less stable but it seems not!
+
+---
+
+OK you mentioned QQQ. Let's give it a go with that
+
+---
+
+I can see a real use for multi-agent setups here. A code runner, a researcher and and analysis expert could all iterate over to produce useful data
+
+---
+
+Downloading QQQ (2015-01-01 to 2026-01-01)...
+  2766 trading days loaded.
+
+Running strategy comparison...
+
+Strategy                  Start        End            Return   Drawdown    Win%  Trades
+---------------------------------------------------------------------------------------
+Breakout(20d)             2015-02-02   2025-12-31    +277.3%     -19.4%   57.1%      35
+Momentum(ROC-12)          2015-01-21   2025-12-31    +250.5%     -21.3%   56.7%      30
+BollingerBands(20)        2015-02-02   2025-12-31    +174.7%     -35.2%   80.0%      25
+Gap(2%)                   2015-01-05   2025-12-31    +173.9%     -30.3%   61.9%      21
+RSI(14, 30/70)            2015-01-23   2025-12-31    +138.9%     -29.5%   90.9%      11
+MovingAvgCrossover        2015-03-17   2025-12-31    +134.6%     -32.9%   57.7%      26
+MeanReversion             2015-02-02   2025-12-31    +132.0%     -34.8%   87.5%       8
+ParabolicSAR              2015-01-05   2025-12-31    +117.3%     -39.5%   48.2%     137
+ConsecutiveDays(3)        2015-01-07   2025-12-31    +110.5%     -24.3%   75.0%      92
+MACD(12/26/9)             2015-02-24   2025-12-31     +91.4%     -25.1%   50.9%     108
+Fibonacci(20d)            2015-02-02   2025-12-31     +57.3%     -23.4%   50.0%      36
+Volatility(ATR-14)        2015-02-02   2025-12-31      +0.0%       0.0%    0.0%       0
+---------------------------------------------------------------------------------------
+Buy & Hold (benchmark)    2015-01-05   2025-12-31    +557.8%     -35.1%    n/a     n/a
+
+No WFA strategy configured — set WFA_STRATEGY_CLASS and WFA_PARAM_SPACE to run WFA.
+
+---
+
+yes pelase
+
+---
+
+what about DCA? how would we model that?
+
+---
+
+Downloading QQQ (2015-01-01 to 2026-01-01)...
+  2766 trading days loaded.
+
+Running strategy comparison...
+
+Strategy                  Start        End            Return   Drawdown    Win%  Trades
+---------------------------------------------------------------------------------------
+Breakout(20d)             2015-02-02   2025-12-31    +277.3%     -19.4%   57.1%      35
+Momentum(ROC-12)          2015-01-21   2025-12-31    +250.5%     -21.3%   56.7%      30
+BollingerBands(20)        2015-02-02   2025-12-31    +174.7%     -35.2%   80.0%      25
+Gap(2%)                   2015-01-05   2025-12-31    +173.9%     -30.3%   61.9%      21
+RSI(14, 30/70)            2015-01-23   2025-12-31    +138.9%     -29.5%   90.9%      11
+MovingAvgCrossover        2015-03-17   2025-12-31    +134.6%     -32.9%   57.7%      26
+MeanReversion             2015-02-02   2025-12-31    +132.0%     -34.8%   87.5%       8
+ParabolicSAR              2015-01-05   2025-12-31    +120.4%     -39.4%   48.2%     137
+ConsecutiveDays(3)        2015-01-07   2025-12-31    +110.5%     -24.3%   75.0%      92
+MACD(12/26/9)             2015-02-24   2025-12-31     +91.4%     -25.1%   50.9%     108
+Fibonacci(20d)            2015-02-02   2025-12-31     +57.3%     -23.4%   50.0%      36
+Volatility(ATR-14)        2015-02-02   2025-12-31      +0.0%       0.0%    0.0%       0
+---------------------------------------------------------------------------------------
+Buy & Hold (benchmark)    2015-01-05   2025-12-31    +557.8%     -35.1%    n/a     n/a
+DCA (monthly) (benchmark) 2015-01-05   2025-12-31    +216.9%     -29.6%    n/a     n/a
+
+Running Walk-Forward Analysis on MomentumStrategy...
+  Data: 2766 bars  |  Windows: 252-bar train / 63-bar test
+
+Per-window results:
+  Test period              Best params                           Sharpe   Return  Trades
+  --------------------------------------------------------------------------------------
+  2016-01-04 -> 2016-04-04 roc_period=20 roc_threshold=0.02        3.47    +6.6%       1
+  2016-04-05 -> 2016-07-01 roc_period=20 roc_threshold=0.02       -3.32    -6.9%       1
+  2016-07-05 -> 2016-09-30 roc_period=12 roc_threshold=0.03        2.21    +4.7%       1
+  2016-10-03 -> 2016-12-30 roc_period=6 roc_threshold=0.05         -inf    +0.0%       0
+  2017-01-03 -> 2017-04-03 roc_period=12 roc_threshold=0.05        -inf    +0.0%       0
+  2017-04-04 -> 2017-07-03 roc_period=9 roc_threshold=0.03         1.02    +2.0%       1
+  2017-07-05 -> 2017-10-02 roc_period=9 roc_threshold=0.03         0.63    +1.3%       1
+  2017-10-03 -> 2018-01-02 roc_period=20 roc_threshold=0.02        2.58    +4.4%       1
+  2018-01-03 -> 2018-04-04 roc_period=12 roc_threshold=0.02       -2.76    -9.6%       2
+  2018-04-05 -> 2018-07-03 roc_period=6 roc_threshold=0.02         0.74    +1.8%       2
+  2018-07-05 -> 2018-10-02 roc_period=20 roc_threshold=0.02        2.01    +3.3%       1
+  2018-10-03 -> 2019-01-03 roc_period=20 roc_threshold=0.02       -3.30    -4.6%       1
+  2019-01-04 -> 2019-04-04 roc_period=20 roc_threshold=0.05        3.73    +7.6%       1
+  2019-04-05 -> 2019-07-05 roc_period=26 roc_threshold=0.03        1.52    +1.4%       1
+  2019-07-08 -> 2019-10-03 roc_period=15 roc_threshold=0.05       -2.17    -3.2%       1
+  2019-10-04 -> 2020-01-03 roc_period=6 roc_threshold=0.02         5.12   +11.0%       1
+  2020-01-06 -> 2020-04-03 roc_period=6 roc_threshold=0.02        -0.67    -4.0%       3
+  2020-04-06 -> 2020-07-06 roc_period=9 roc_threshold=0.07         4.84   +26.1%       1
+  2020-07-07 -> 2020-10-02 roc_period=15 roc_threshold=0.03        0.52    +1.8%       2
+  2020-10-05 -> 2021-01-04 roc_period=15 roc_threshold=0.03        3.22    +6.0%       1
+  2021-01-05 -> 2021-04-06 roc_period=9 roc_threshold=0.07         -inf    +0.0%       0
+  2021-04-07 -> 2021-07-06 roc_period=9 roc_threshold=0.03         4.61    +7.7%       1
+  2021-07-07 -> 2021-10-04 roc_period=9 roc_threshold=0.03        -2.89    -3.5%       1
+  2021-10-05 -> 2022-01-03 roc_period=15 roc_threshold=0.02        1.20    +2.6%       2
+  2022-01-04 -> 2022-04-04 roc_period=12 roc_threshold=0.02       -1.08    -3.5%       2
+  2022-04-05 -> 2022-07-06 roc_period=26 roc_threshold=0.02        -inf    +0.0%       0
+  2022-07-07 -> 2022-10-04 roc_period=26 roc_threshold=0.02       -5.42   -11.1%       1
+  2022-10-05 -> 2023-01-04 roc_period=20 roc_threshold=0.05       -1.92    -6.1%       1
+  2023-01-05 -> 2023-04-05 roc_period=20 roc_threshold=0.02        0.76    +1.8%       2
+  2023-04-06 -> 2023-07-07 roc_period=20 roc_threshold=0.1         1.78    +3.3%       1
+  2023-07-10 -> 2023-10-05 roc_period=9 roc_threshold=0.02        -3.04    -6.7%       2
+  2023-10-06 -> 2024-01-05 roc_period=20 roc_threshold=0.02        2.80    +5.3%       1
+  2024-01-08 -> 2024-04-08 roc_period=20 roc_threshold=0.05        0.90    +2.1%       1
+  2024-04-09 -> 2024-07-09 roc_period=26 roc_threshold=0.02        6.36   +10.1%       1
+  2024-07-10 -> 2024-10-07 roc_period=26 roc_threshold=0.02        0.85    +1.4%       2
+  2024-10-08 -> 2025-01-07 roc_period=6 roc_threshold=0.02        -0.28    -0.9%       2
+  2025-01-08 -> 2025-04-09 roc_period=6 roc_threshold=0.02        -4.15   -10.1%       3
+  2025-04-10 -> 2025-07-11 roc_period=6 roc_threshold=0.02         5.02   +17.2%       1
+  2025-07-14 -> 2025-10-09 roc_period=6 roc_threshold=0.05         -inf    +0.0%       0
+
+Overall out-of-sample performance:
+  Sharpe ratio  : 0.60
+  Total return  : +64.5%
+  Max drawdown  : -25.4%
+  Win rate      : 57.4%
+  Windows       : 39 (34 with trades)
+  Best params   : {'roc_period': 20, 'roc_threshold': 0.02}
+
+---
+
+[Image #19] [Image #20]
+
+---
+
+No need. This has been very interesting.
+
+---
+
+we'd need to convert this tradign code into a package which can be installed even if just as an editable package
+
+---
+
+could you pop that in the README please
