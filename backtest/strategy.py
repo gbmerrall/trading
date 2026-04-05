@@ -1511,7 +1511,7 @@ class MeanReversionStrategy(BaseStrategy):
         Raises:
             ValidationError: If data is invalid or insufficient
         """
-        validate_dataframe(data)
+        validate_dataframe(data, required_columns=['Close'])
         validate_price_data(data, column='Close')
 
         if len(data) < self.warmup_period:
@@ -1629,7 +1629,7 @@ class MomentumStrategy(BaseStrategy):
         Raises:
             ValidationError: If data is invalid or insufficient
         """
-        validate_dataframe(data)
+        validate_dataframe(data, required_columns=['Close'])
         validate_price_data(data, column='Close')
 
         if len(data) < self.warmup_period:
