@@ -81,3 +81,10 @@ I've implemented the implementation plan. Please do a comprehensive review
 ---
 
 not bad. yes please
+
+---
+
+can you please updated @README.md with a few things
+1. Tidy up the strategies section including adding walk-forward 
+2. Add an install section at the top. Don't use uv, just document creating a venv and using requirements.txt
+3. Add a brief getting started tutorial
