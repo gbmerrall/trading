@@ -199,9 +199,24 @@ object dtype — use `result.windows["best_params"].tolist()` to iterate), `obje
 
 ## runner.py Changes
 
-`_calculate_metrics(portfolio_history, trades)` is refactored to call the functions in
-`metrics.py` rather than reimplementing the logic. The method signature and return dict keys are
-unchanged; existing tests pass without modification.
+`_calculate_metrics(portfolio_history, trades)` is refactored to call the corresponding functions
+in `metrics.py` for its four existing keys only:
+
+```python
+return {
+    "total_return": metrics.total_return(portfolio_history, trades),
+    "win_rate":     metrics.win_rate(portfolio_history, trades),
+    "num_trades":   len(trades),
+    "max_drawdown": metrics.max_drawdown(portfolio_history, trades),
+}
+```
+
+The return dict keeps exactly these four keys. No additional metrics are added to the standard
+backtest result. `test_runner.py` asserts the existence of these four keys and must continue to
+pass without modification.
+
+WFA uses `metrics.py` functions directly and independently — the runner's output dict is not
+the source of WFA's per-window metrics.
 
 ---
 
