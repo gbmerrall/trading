@@ -18,7 +18,6 @@ Sign convention:
 import math
 from typing import Callable
 
-import numpy as np
 import pandas as pd
 
 from .constants import TradingConstants
@@ -164,9 +163,10 @@ def sortino_ratio(portfolio_history: list[dict], trades: list[dict]) -> float:
     
     if len(negative_returns) == 0:
         return 1e6 if mean_return > 0 else float("-inf")
-        
-    downside_std = float(negative_returns.std())
-    
+
+    # Standard semi-deviation from zero: sqrt(mean(r^2)) for r in negative_returns
+    downside_std = float(math.sqrt(float((negative_returns ** 2).mean())))
+
     if downside_std < 1e-12:
         return 1e6 if mean_return > 0 else float("-inf")
         

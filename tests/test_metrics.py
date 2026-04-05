@@ -169,6 +169,17 @@ class TestSortinoRatio:
         h = _history(values)
         assert sortino_ratio(h, []) >= sharpe_ratio(h, [])
 
+    def test_known_value_standard_semi_deviation_formula(self):
+        # Values [10000, 10000, 9900] → daily_returns = [0.0, -0.01]
+        # negative_returns = [-0.01]
+        # Standard semi-dev from zero: sqrt((-0.01)^2 / 1) = 0.01
+        # mean_return = mean([0.0, -0.01]) = -0.005
+        # sortino = -0.005 / 0.01 * sqrt(252) = -0.5 * sqrt(252)
+        import math
+        h = _history([10000, 10000, 9900])
+        expected = (-0.005 / 0.01) * math.sqrt(252)
+        assert sortino_ratio(h, []) == pytest.approx(expected, rel=1e-6)
+
 
 class TestCalmarRatio:
     def test_positive_cagr_with_drawdown(self):

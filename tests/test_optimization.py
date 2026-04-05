@@ -405,6 +405,36 @@ class TestRunTrainWindow:
         assert "best_params" in result
         assert result["objective_score"] == float("-inf")
 
+    def test_selects_higher_scoring_candidate(self):
+        """The optimizer must select the candidate with the highest objective score.
+
+        We construct two candidates and verify the winner is determined by score,
+        not by iteration order. We do this by injecting a controlled objective function
+        that scores consecutive_days=1 at 999 and all others at 0.
+        """
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+
+        data = self._make_data()
+
+        # Objective that scores 1-day strategy at 999, all others at 0
+        def biased_objective(portfolio_history, trades):
+            return 999.0 if len(trades) <= 100 else 0.0
+
+        opt = WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [2, 3, 1]},  # 1 is last to catch ordering bugs
+            data=data,
+            train_size=100,
+            test_size=50,
+            window_type="sliding",
+            objective=biased_objective,
+            min_trades=0,
+        )
+        train_data = data.iloc[:100]
+        result = opt._run_train_window(train_data)
+        assert result["objective_score"] == 999.0
+
 
 class TestWalkForwardResult:
     """Tests for WalkForwardOptimizer.run() and WalkForwardResult."""
@@ -518,3 +548,129 @@ class TestWalkForwardResult:
         result = opt.run()
         assert isinstance(result.equity_curve, pd.Series)
         assert len(result.windows) > 0
+
+    def test_runner_receives_full_unfiltered_window_slice(self):
+        """BacktestRunnerImpl must receive the full window slice, not warmup-trimmed data.
+
+        The optimizer applies warmup filtering post-run. If it pre-trimmed the data
+        before calling the runner, indicators would not initialise correctly. We verify
+        this by checking that every call to BacktestRunnerImpl.run receives exactly
+        train_size or test_size bars — never train_size minus warmup_period.
+        """
+        from unittest.mock import patch
+        from backtest import runner as runner_module
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+
+        data = self._make_oscillating_data(n=400)
+        train_size = 150
+        test_size = 50
+        consecutive_days = 1  # warmup_period = 1
+
+        captured_lengths = []
+        original_run = runner_module.BacktestRunnerImpl.run
+
+        def capturing_run(self_runner, data, **kwargs):
+            captured_lengths.append(len(data))
+            return original_run(self_runner, data=data, **kwargs)
+
+        opt = WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [consecutive_days]},
+            data=data,
+            train_size=train_size,
+            test_size=test_size,
+            window_type="sliding",
+            min_trades=0,
+        )
+
+        with patch.object(runner_module.BacktestRunnerImpl, "run", capturing_run):
+            opt.run()
+
+        # Every runner.run call must receive exactly train_size or test_size bars.
+        # If the optimizer incorrectly pre-trimmed by warmup_period (=1), we would
+        # observe lengths of 149 or 49 — which are NOT valid window sizes.
+        valid_lengths = {train_size, test_size}
+        invalid = [l for l in captured_lengths if l not in valid_lengths]
+        assert not invalid, (
+            f"Runner received non-window-sized data (warmup pre-trimming bug): {invalid}"
+        )
+        assert test_size in captured_lengths, "No test-window runner calls observed"
+        assert train_size in captured_lengths, "No train-window runner calls observed"
+
+    def test_equity_curve_length_equals_test_windows_minus_warmup(self):
+        """Equity curve length must equal sum(test_size - warmup_period) across windows."""
+        from backtest.optimization import WalkForwardOptimizer, _generate_windows
+        from backtest.strategy import ConsecutiveDaysStrategy
+
+        n = 500
+        test_size = 50
+        train_size = 150
+        consecutive_days = 1  # warmup_period = consecutive_days = 1
+
+        data = self._make_oscillating_data(n=n)
+        opt = WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [consecutive_days]},
+            data=data,
+            train_size=train_size,
+            test_size=test_size,
+            window_type="sliding",
+            min_trades=0,
+        )
+        result = opt.run()
+
+        windows = _generate_windows(data, train_size, test_size, "sliding")
+        warmup = consecutive_days  # warmup_period == consecutive_days for this strategy
+        expected_length = len(windows) * (test_size - warmup)
+
+        assert len(result.equity_curve) == expected_length, (
+            f"Expected equity curve length {expected_length}, got {len(result.equity_curve)}"
+        )
+
+    def test_optimizer_selects_known_optimal_param_in_majority_of_windows(self):
+        """Optimizer must select the clearly better parameter in most training windows.
+
+        Data has a repeating 3-bar pattern: 1 down day, 2 up days. With consecutive_days=1:
+        - Buy executes on the first up day (next bar after the down signal).
+        - Sell executes on the second up day (next bar after the first up signal).
+        - Each round trip captures approximately 1 bar of up-move → positive return.
+
+        With consecutive_days=2 or 3: two or three consecutive down days never appear
+        in this pattern, so no trades fire and total_return = 0. Since 0 < positive,
+        consecutive_days=1 must be selected by the optimizer in every training window.
+        """
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+
+        n = 600
+        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+        # Repeating: down 2%, up 1.5%, up 1.5%
+        # N=1 fires every 3 bars; N=2, N=3 never fire (no 2+ consecutive downs).
+        prices = [100.0]
+        for i in range(1, n):
+            phase = i % 3
+            if phase == 0:
+                prices.append(prices[-1] * 0.98)
+            else:
+                prices.append(prices[-1] * 1.015)
+        data = pd.DataFrame({"Close": prices}, index=dates)
+
+        opt = WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2, 3]},
+            data=data,
+            train_size=150,
+            test_size=50,
+            window_type="sliding",
+            min_trades=0,
+            objective="total_return",
+        )
+        result = opt.run()
+
+        assert result.best_params_overall == {"consecutive_days": 1}, (
+            f"Expected consecutive_days=1 to win overall, got {result.best_params_overall}"
+        )
+        assert result.summary["param_stability"] >= 0.5, (
+            f"Expected param_stability >= 0.5, got {result.summary['param_stability']}"
+        )

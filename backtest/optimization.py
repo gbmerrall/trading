@@ -8,16 +8,17 @@ Public API:
 """
 
 import itertools
+import logging
 import random
 from dataclasses import dataclass
-from typing import Optional, Union, List, Dict, Any, Callable
 
-import numpy as np
 import pandas as pd
 
 from .metrics import METRICS, MetricFn
 from .strategy import BaseStrategy
 from .validation import ValidationError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -228,8 +229,8 @@ class WalkForwardOptimizer:
         train_size: int,
         test_size: int,
         window_type: str = "sliding",
-        searcher: Union[GridSearch, RandomSearch, None] = None,
-        objective: Union[str, MetricFn] = "sharpe_ratio",
+        searcher: "GridSearch | RandomSearch | None" = None,
+        objective: "str | MetricFn" = "sharpe_ratio",
         min_trades: int = 5,
     ):
         """
@@ -315,7 +316,10 @@ class WalkForwardOptimizer:
 
             try:
                 result = runner.run(data=train_data, start_capital=None)
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Candidate skipped during training (params=%s): %s", params, exc
+                )
                 continue
 
             portfolio_history = [
@@ -383,7 +387,13 @@ class WalkForwardOptimizer:
 
             try:
                 test_run = runner.run(data=test_data, start_capital=None)
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "Test window failed (params=%s, test_start=%s): %s",
+                    best_params,
+                    test_data.index[0],
+                    exc,
+                )
                 # If the test window fails, record a zero-trade window
                 row = {
                     "train_start": train_data.index[0],
