@@ -155,10 +155,14 @@ Train always starts at `T0` and expands. Test advances by `test_size` each step.
 For each window:
 1. Slice train data.
 2. Run `searcher.generate(param_space)` to get candidate parameter sets.
-3. For each candidate: instantiate `strategy_class(**params)`. Apply warmup buffer using that
-   instance's `warmup_period` — the full window slice is passed to the strategy (so indicators
-   initialise correctly) but the first `warmup_period` bars are excluded from performance scoring.
-   Run `BacktestRunnerImpl` with no benchmarks, score the result with the objective function.
+3. For each candidate: instantiate `strategy_class(**params)`. Run `BacktestRunnerImpl` with
+   the full window slice and no benchmarks — the runner receives all bars so indicators
+   initialise correctly. After the runner returns, the optimizer applies the warmup buffer:
+   - Slice `portfolio_history` to entries where `date >= window_start + warmup_period bars`
+   - Filter `trades` to entries where `exit_date >= window_start + warmup_period bars`
+   Pass the filtered history and trades to the objective function for scoring.
+   `BacktestRunnerImpl` is not modified — warmup filtering is entirely the optimizer's
+   responsibility.
 4. Select the best-scoring parameter set.
 5. Apply best params to the test window (also with warmup buffer applied to scoring).
 6. Record test equity curve, trades, and all 10 metrics for this window.
@@ -170,8 +174,9 @@ runner.
 **Leakage prevention:**
 - Train and test windows share no bars.
 - The 1-day signal shift is baked into every strategy — no extra handling needed at the WFA level.
-- Warmup buffer on the test window prevents the first `warmup_period` bars from contributing to
-  test metrics (those bars' indicator values were seeded by train data).
+- Warmup buffer on the test window: after running the test-window backtest, the optimizer filters
+  `portfolio_history` and `trades` to exclude the first `warmup_period` bars before computing
+  the window's reported metrics. Same post-run filtering mechanism as training.
 
 ### WalkForwardResult
 
@@ -234,8 +239,9 @@ the source of WFA's per-window metrics.
 
 - **Window splitting:** verify windows are contiguous, non-overlapping, cover the full date range,
   and that anchored windows always start at index 0.
-- **Warmup buffer:** verify signals from the first `warmup_period` bars of each window are
-  excluded from scoring.
+- **Warmup buffer:** after a window backtest, verify that `portfolio_history` entries and trades
+  with `exit_date` before `window_start + warmup_period bars` are excluded from metric scoring.
+  Verify `BacktestRunnerImpl` itself is called with the full unfiltered window slice.
 - **Data leakage:** verify no test-window bars appear in the train slice.
 - **GridSearch:** verify Cartesian product size equals product of all list lengths.
 - **RandomSearch:** verify `n` combinations returned, results are reproducible with same seed,
