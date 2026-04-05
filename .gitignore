@@ -3,7 +3,6 @@ __pycache__
 .DS_Store
 .cursor
 .claude
-.entire
 .pytest_cache
 .ruff_cache
 .coverage
