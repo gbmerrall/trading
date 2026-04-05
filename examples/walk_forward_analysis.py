@@ -12,12 +12,9 @@ Usage:
     python examples/walk_forward_analysis.py AAPL 2016-01-01 2024-01-01 -1
 """
 
-import sys
-from pathlib import Path
 
 import yfinance as yf
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.optimization import RandomSearch, WalkForwardOptimizer
 from backtest.reporting import save_wfa_report

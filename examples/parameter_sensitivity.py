@@ -9,12 +9,9 @@ Usage:
     python examples/parameter_sensitivity.py SPY 2018-01-01 2024-01-01
 """
 
-import sys
-from pathlib import Path
 
 import yfinance as yf
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.metrics import METRICS
 from backtest.runner import BacktestRunnerImpl

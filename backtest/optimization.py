@@ -573,14 +573,28 @@ class WalkForwardOptimizer:
         if not all_equity_segments:
             raise ValidationError("WFA produced no results across all windows")
 
-        # Composite equity curve: just concatenate segments
+        # Composite equity curve: just concatenate segments (used for plotting)
         composite_equity = pd.concat(all_equity_segments)
         # Remove duplicate dates at window boundaries
         composite_equity = composite_equity[~composite_equity.index.duplicated(keep="first")]
 
-        # Summary Metrics
+        # Chain equity segments for summary metrics so each window picks up where
+        # the previous left off, giving accurate compound return and drawdown.
+        chained_segments = []
+        current_capital = float(all_equity_segments[0].iloc[0])
+        for seg in all_equity_segments:
+            if seg.empty:
+                continue
+            scale = current_capital / float(seg.iloc[0])
+            chained_seg = seg * scale
+            chained_segments.append(chained_seg)
+            current_capital = float(chained_seg.iloc[-1])
+        chained_equity = pd.concat(chained_segments)
+        chained_equity = chained_equity[~chained_equity.index.duplicated(keep="first")]
+
+        # Summary Metrics computed on chained curve for accurate cross-window aggregates
         summary_history = [
-            {"date": d, "value": v} for d, v in composite_equity.items()
+            {"date": d, "value": v} for d, v in chained_equity.items()
         ]
         summary = {}
         for m_name in metric_names:

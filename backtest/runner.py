@@ -300,29 +300,42 @@ class BacktestRunnerImpl:
             strategy_history = portfolio.get_value_history()
             if not strategy_history:
                 raise ValidationError("No portfolio history generated")
-            
-            strategy_returns = pd.DataFrame(strategy_history).set_index('date')['value']
-            strategy_metrics = self._calculate_metrics(strategy_history, trades)
-            
-            # Calculate benchmark returns
-            benchmark_returns = {}
-            benchmark_metrics = {}
-            
+
+            # Calculate raw benchmark returns on the full data window
+            benchmark_returns_raw = {}
             for bench in self.benchmarks:
                 bench_name = bench.__class__.__name__
                 try:
-                    bench_returns = bench.calculate_returns(data, start_capital)
-                    benchmark_returns[bench_name] = bench_returns
-                    
-                    bench_history = [
-                        {'date': date, 'value': value} 
-                        for date, value in bench_returns.items()
-                    ]
-                    benchmark_metrics[bench_name] = self._calculate_metrics(bench_history, [])
-                    
+                    benchmark_returns_raw[bench_name] = bench.calculate_returns(data, start_capital)
                 except Exception as e:
-                    raise ValidationError(f"Error calculating {bench_name} benchmark: {str(e)}") from e
-            
+                    raise ValidationError(
+                        f"Error calculating {bench_name} benchmark: {str(e)}"
+                    ) from e
+
+            # Trim to post-warmup period so metrics and date ranges exclude dead cash time
+            warmup_n = getattr(self.strategy, 'warmup_period', 0)
+            if warmup_n > 0 and len(close_prices) > warmup_n:
+                cutoff_date = close_prices.index[warmup_n]
+                strategy_history = [r for r in strategy_history if r['date'] >= cutoff_date]
+                trades = [t for t in trades if t['entry_date'] >= cutoff_date]
+                benchmark_returns = {
+                    name: returns[returns.index >= cutoff_date]
+                    for name, returns in benchmark_returns_raw.items()
+                }
+            else:
+                benchmark_returns = benchmark_returns_raw
+
+            strategy_returns = pd.DataFrame(strategy_history).set_index('date')['value']
+            strategy_metrics = self._calculate_metrics(strategy_history, trades)
+
+            benchmark_metrics = {}
+            for bench_name, bench_returns in benchmark_returns.items():
+                bench_history = [
+                    {'date': date, 'value': value}
+                    for date, value in bench_returns.items()
+                ]
+                benchmark_metrics[bench_name] = self._calculate_metrics(bench_history, [])
+
             # Generate plot if requested
             backtest_config = get_backtest_config()
             if output_file and backtest_config.save_plots:

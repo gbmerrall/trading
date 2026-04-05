@@ -695,3 +695,86 @@ def test_portfolio_history_validation():
         
         with pytest.raises(ValidationError, match="No portfolio history generated"):
             runner.run(data, start_capital=10000.0)
+
+# ==================== WARMUP TRIM TESTS ====================
+
+class TestWarmupTrim:
+    """Tests that the runner trims output to post-warmup period."""
+
+    def _make_data(self, n: int, start: str = "2023-01-01") -> pd.DataFrame:
+        dates = pd.bdate_range(start, periods=n)
+        prices = [100.0 + i for i in range(n)]
+        return pd.DataFrame({"Close": prices}, index=dates)
+
+    def test_strategy_returns_start_after_warmup(self):
+        """strategy_returns index must begin at bar [warmup_period], not bar 0."""
+        warmup = 5
+        n = 20
+        data = self._make_data(n)
+
+        strategy = ConsecutiveDaysStrategy(consecutive_days=warmup)
+        runner = BacktestRunnerImpl(strategy, benchmarks=[])
+        results = runner.run(data, start_capital=10_000.0)
+
+        expected_start = data.index[warmup]
+        assert results["strategy_returns"].index[0] == expected_start
+
+    def test_strategy_returns_length_equals_n_minus_warmup(self):
+        """strategy_returns should have exactly (n - warmup_period) rows."""
+        warmup = 5
+        n = 20
+        data = self._make_data(n)
+
+        strategy = ConsecutiveDaysStrategy(consecutive_days=warmup)
+        runner = BacktestRunnerImpl(strategy, benchmarks=[])
+        results = runner.run(data, start_capital=10_000.0)
+
+        assert len(results["strategy_returns"]) == n - warmup
+
+    def test_benchmark_returns_trimmed_to_same_window(self):
+        """Benchmark returns must be trimmed to the same post-warmup date range."""
+        warmup = 5
+        n = 20
+        data = self._make_data(n)
+
+        strategy = ConsecutiveDaysStrategy(consecutive_days=warmup)
+        runner = BacktestRunnerImpl(strategy, benchmarks=[BuyAndHold()])
+        results = runner.run(data, start_capital=10_000.0)
+
+        expected_start = data.index[warmup]
+        for name, bench_returns in results["benchmark_returns"].items():
+            assert bench_returns.index[0] == expected_start, (
+                f"{name}: expected start {expected_start}, got {bench_returns.index[0]}"
+            )
+            assert len(bench_returns) == n - warmup
+
+    def test_zero_warmup_returns_full_series(self):
+        """A strategy with warmup_period=0 must return the full data range."""
+
+        class NoWarmupStrategy:
+            warmup_period = 0
+
+            def generate_signals(self, data):
+                signals = pd.DataFrame(index=data.index)
+                signals["buy"] = False
+                signals["sell"] = False
+                return signals
+
+        n = 10
+        data = self._make_data(n)
+        runner = BacktestRunnerImpl(NoWarmupStrategy(), benchmarks=[])
+        results = runner.run(data, start_capital=10_000.0)
+
+        assert len(results["strategy_returns"]) == n
+
+    def test_warmup_longer_than_data_returns_full_series(self):
+        """If warmup_period >= len(data), no trim occurs — return full series."""
+        n = 5
+        data = self._make_data(n)
+
+        # warmup_period = n means len(close_prices) is NOT > warmup_n, so no trim
+        strategy = ConsecutiveDaysStrategy(consecutive_days=n)
+        runner = BacktestRunnerImpl(strategy, benchmarks=[])
+        results = runner.run(data, start_capital=10_000.0)
+
+        assert len(results["strategy_returns"]) == n

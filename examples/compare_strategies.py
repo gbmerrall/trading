@@ -8,12 +8,9 @@ Usage:
     python examples/compare_strategies.py MSFT 2020-01-01 2024-01-01
 """
 
-import sys
-from pathlib import Path
 
 import yfinance as yf
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from backtest.benchmarks import BuyAndHold
 from backtest.runner import BacktestRunnerImpl
