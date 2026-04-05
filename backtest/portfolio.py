@@ -525,22 +525,6 @@ class Portfolio:
             'positions_value': total_value - self.cash
         })
     
-    def _get_total_value(self, current_price: float) -> float:
-        """
-        Legacy method: Calculate total value with single asset price.
-        
-        Args:
-            current_price: Current price of the default asset
-            
-        Returns:
-            Total portfolio value
-        """
-        if self.default_symbol in self._positions:
-            position = self._positions[self.default_symbol]
-            return self.cash + (position.shares * current_price)
-        else:
-            return self.cash
-
     # ==================== STRING REPRESENTATIONS ====================
     
     def __str__(self) -> str:
