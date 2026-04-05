@@ -20,6 +20,30 @@ from .strategy import BaseStrategy
 from .validation import ValidationError
 
 
+@dataclass
+class WalkForwardResult:
+    """Results from a Walk-Forward Analysis run.
+
+    Attributes:
+        equity_curve: Stitched out-of-sample equity curve as a pd.Series
+            with DatetimeIndex. Values are portfolio value at each date.
+        windows: pd.DataFrame with one row per test window. Columns:
+            train_start, train_end, test_start, test_end, best_params (dict),
+            objective_score, n_trades, total_return, cagr, sharpe_ratio,
+            sortino_ratio, calmar_ratio, max_drawdown, ulcer_index,
+            profit_factor, win_rate, expectancy, recovery_factor.
+        summary: dict of aggregate metrics computed over the full equity_curve,
+            plus n_windows, n_windows_with_trades, param_stability.
+        best_params_overall: The parameter set selected most often across
+            windows. Ties broken by highest mean objective score.
+    """
+
+    equity_curve: pd.Series
+    windows: pd.DataFrame
+    summary: dict
+    best_params_overall: dict
+
+
 class GridSearch:
     """Exhaustive search over all combinations of a parameter space.
 
@@ -318,3 +342,128 @@ class WalkForwardOptimizer:
                 best_params = params
 
         return {"best_params": best_params, "objective_score": best_score}
+
+    def run(self) -> WalkForwardResult:
+        """Execute Walk-Forward Analysis and return the composite result.
+
+        For each window pair:
+        1. Optimise parameters on the training window.
+        2. Evaluate the best parameters on the test window with warmup filtering.
+        3. Record per-window metrics and the equity curve segment.
+
+        Returns:
+            WalkForwardResult with equity_curve, windows, summary, best_params_overall.
+        """
+        from .runner import BacktestRunnerImpl
+        import backtest.metrics as _metrics
+
+        windows = _generate_windows(
+            self.data, self.train_size, self.test_size, self.window_type
+        )
+
+        all_equity_segments: list[pd.Series] = []
+        all_trades: list[dict] = []
+        window_rows: list[dict] = []
+
+        metric_names = [
+            "total_return", "cagr", "sharpe_ratio", "sortino_ratio",
+            "calmar_ratio", "max_drawdown", "ulcer_index",
+            "profit_factor", "win_rate", "expectancy", "recovery_factor",
+        ]
+
+        for train_data, test_data in windows:
+            train_result = self._run_train_window(train_data)
+            best_params = train_result["best_params"]
+            objective_score = train_result["objective_score"]
+
+            # --- Evaluate on test window ---
+            strategy = self.strategy_class(**best_params)
+            warmup_n = strategy.warmup_period
+            runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
+
+            try:
+                test_run = runner.run(data=test_data, start_capital=None)
+            except Exception:
+                # If the test window fails, record a zero-trade window
+                row = {
+                    "train_start": train_data.index[0],
+                    "train_end": train_data.index[-1],
+                    "test_start": test_data.index[0],
+                    "test_end": test_data.index[-1],
+                    "best_params": best_params,
+                    "objective_score": objective_score,
+                    "n_trades": 0,
+                    **{m: float("-inf") for m in metric_names},
+                }
+                window_rows.append(row)
+                continue
+
+            test_equity = test_run["strategy_returns"]
+            test_portfolio_history = [
+                {"date": d, "value": v} for d, v in test_equity.items()
+            ]
+            test_trades = test_run["trades"]
+
+            # Apply warmup buffer to scoring
+            if warmup_n > 0 and len(test_data) > warmup_n:
+                cutoff = test_data.index[warmup_n]
+                scored_history, scored_trades = _filter_by_warmup(
+                    test_portfolio_history, test_trades, cutoff
+                )
+                scored_equity = test_equity[test_equity.index >= cutoff]
+            else:
+                scored_history, scored_trades = test_portfolio_history, test_trades
+                scored_equity = test_equity
+
+            # Calculate all 10 metrics for this window
+            row = {
+                "train_start": train_data.index[0],
+                "train_end": train_data.index[-1],
+                "test_start": test_data.index[0],
+                "test_end": test_data.index[-1],
+                "best_params": best_params,
+                "objective_score": objective_score,
+                "n_trades": len(scored_trades),
+            }
+            for m_name in metric_names:
+                row[m_name] = _metrics.METRICS[m_name](scored_history, scored_trades)
+
+            window_rows.append(row)
+            all_equity_segments.append(scored_equity)
+            all_trades.extend(scored_trades)
+
+        # --- Stitch results ---
+        if not all_equity_segments:
+            raise ValidationError("WFA produced no results across all windows")
+
+        # Composite equity curve: just concatenate segments
+        composite_equity = pd.concat(all_equity_segments)
+        # Remove duplicate dates at window boundaries
+        composite_equity = composite_equity[~composite_equity.index.duplicated(keep="first")]
+
+        # Summary Metrics
+        summary_history = [
+            {"date": d, "value": v} for d, v in composite_equity.items()
+        ]
+        summary = {}
+        for m_name in metric_names:
+            summary[m_name] = _metrics.METRICS[m_name](summary_history, all_trades)
+
+        windows_df = pd.DataFrame(window_rows)
+        
+        summary["n_windows"] = len(windows_df)
+        summary["n_windows_with_trades"] = int((windows_df["n_trades"] > 0).sum())
+
+        # Best Params Overall (Mode)
+        param_series = windows_df["best_params"].apply(lambda d: tuple(sorted(d.items())))
+        mode_params_tuple = param_series.mode()[0]
+        best_params_overall = dict(mode_params_tuple)
+        
+        summary["param_stability"] = float((param_series == mode_params_tuple).mean())
+
+        return WalkForwardResult(
+            equity_curve=composite_equity,
+            windows=windows_df,
+            summary=summary,
+            best_params_overall=best_params_overall,
+        )

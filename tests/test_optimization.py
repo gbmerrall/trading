@@ -404,3 +404,117 @@ class TestRunTrainWindow:
         # Should not raise — falls back to first candidate
         assert "best_params" in result
         assert result["objective_score"] == float("-inf")
+
+
+class TestWalkForwardResult:
+    """Tests for WalkForwardOptimizer.run() and WalkForwardResult."""
+
+    def _make_oscillating_data(self, n=500):
+        """Create data with 3-day up/down oscillations."""
+        import math
+        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+        prices = [100.0 + 10 * math.sin(i * math.pi / 3) for i in range(n)]
+        return pd.DataFrame({"Close": prices}, index=dates)
+
+    def _make_optimizer(self, data=None, min_trades=0):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        if data is None:
+            data = self._make_oscillating_data()
+        return WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2, 3]},
+            data=data,
+            train_size=150,
+            test_size=50,
+            window_type="sliding",
+            min_trades=min_trades,
+        )
+
+    def test_run_returns_walk_forward_result(self):
+        from backtest.optimization import WalkForwardResult
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert isinstance(result, WalkForwardResult)
+
+    def test_equity_curve_is_series(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert isinstance(result.equity_curve, pd.Series)
+
+    def test_equity_curve_has_datetime_index(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert isinstance(result.equity_curve.index, pd.DatetimeIndex)
+
+    def test_windows_is_dataframe(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert isinstance(result.windows, pd.DataFrame)
+
+    def test_windows_has_correct_columns(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        expected_cols = {
+            "train_start", "train_end", "test_start", "test_end",
+            "best_params", "objective_score", "n_trades",
+            "total_return", "cagr", "sharpe_ratio", "sortino_ratio",
+            "calmar_ratio", "max_drawdown", "ulcer_index",
+            "profit_factor", "win_rate", "expectancy", "recovery_factor",
+        }
+        assert expected_cols.issubset(set(result.windows.columns))
+
+    def test_windows_row_count_matches_expected(self):
+        from backtest.optimization import _generate_windows
+        data = self._make_oscillating_data()
+        opt = self._make_optimizer(data=data)
+        result = opt.run()
+        expected_windows = _generate_windows(data, 150, 50, "sliding")
+        assert len(result.windows) == len(expected_windows)
+
+    def test_summary_is_dict(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert isinstance(result.summary, dict)
+
+    def test_summary_has_all_metric_keys(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        for key in ["total_return", "cagr", "sharpe_ratio", "sortino_ratio",
+                    "calmar_ratio", "max_drawdown", "ulcer_index",
+                    "profit_factor", "win_rate", "expectancy", "recovery_factor"]:
+            assert key in result.summary, f"Missing summary key: {key}"
+
+    def test_summary_has_meta_keys(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert "n_windows" in result.summary
+        assert "n_windows_with_trades" in result.summary
+        assert "param_stability" in result.summary
+
+    def test_best_params_overall_is_dict(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert isinstance(result.best_params_overall, dict)
+
+    def test_best_params_overall_keys_match_param_space(self):
+        opt = self._make_optimizer()
+        result = opt.run()
+        assert set(result.best_params_overall.keys()) == {"consecutive_days"}
+
+    def test_anchored_window_type_works(self):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        data = self._make_oscillating_data()
+        opt = WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2]},
+            data=data,
+            train_size=150,
+            test_size=50,
+            window_type="anchored",
+            min_trades=0,
+        )
+        result = opt.run()
+        assert isinstance(result.equity_curve, pd.Series)
+        assert len(result.windows) > 0
