@@ -31,7 +31,8 @@ class ValidationLimits:
 
     # Strategy limits
     MIN_CONSECUTIVE_DAYS = 1
-    MAX_CONSECUTIVE_DAYS = TradingConstants.TRADING_DAYS_PER_YEAR
+    MAX_CONSECUTIVE_DAYS = TradingConstants.TRADING_DAYS_PER_YEAR  # 252 — specific to ConsecutiveDaysStrategy
+    MAX_INDICATOR_PERIOD = 500  # Upper bound for indicator lookback periods (RSI, MACD, MA, etc.)
 
     # Position limits
     MIN_SHARES = 1

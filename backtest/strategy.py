@@ -232,13 +232,13 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
             short_window,
             "short_window",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
         validate_integer(
             long_window,
             "long_window",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
 
         if short_window >= long_window:
@@ -274,7 +274,7 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                 short_window,
                 "short_window",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.short_window = short_window
 
@@ -284,7 +284,7 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                 long_window,
                 "long_window",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.long_window = long_window
 
@@ -377,7 +377,7 @@ class RSIStrategy(BaseStrategy):
             period,
             "period",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
         validate_positive_number(
             lower_bound,
@@ -430,7 +430,7 @@ class RSIStrategy(BaseStrategy):
                 period,
                 "period",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.period = period
 
@@ -536,19 +536,19 @@ class MACDStrategy(BaseStrategy):
             fast,
             "fast",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
         validate_integer(
             slow,
             "slow",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
         validate_integer(
             signal,
             "signal",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
 
         if fast >= slow:
@@ -585,7 +585,7 @@ class MACDStrategy(BaseStrategy):
                 fast,
                 "fast",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.fast = fast
 
@@ -595,7 +595,7 @@ class MACDStrategy(BaseStrategy):
                 slow,
                 "slow",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.slow = slow
 
@@ -605,7 +605,7 @@ class MACDStrategy(BaseStrategy):
                 signal,
                 "signal",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.signal = signal
 
@@ -700,7 +700,7 @@ class BollingerBandsStrategy(BaseStrategy):
             period,
             "period",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
         validate_positive_number(
             std_dev,
@@ -737,7 +737,7 @@ class BollingerBandsStrategy(BaseStrategy):
                 period,
                 "period",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.period = period
 
@@ -984,7 +984,7 @@ class BreakoutStrategy(BaseStrategy):
             lookback_period,
             "lookback_period",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
 
         self.lookback_period = lookback_period
@@ -1014,7 +1014,7 @@ class BreakoutStrategy(BaseStrategy):
                 lookback_period,
                 "lookback_period",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.lookback_period = lookback_period
 
@@ -1220,7 +1220,7 @@ class FibonacciRetracementStrategy(BaseStrategy):
             swing_lookback,
             "swing_lookback",
             min_value=1,
-            max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+            max_value=ValidationLimits.MAX_INDICATOR_PERIOD
         )
 
         if not isinstance(retracement_levels, list) or len(retracement_levels) == 0:
@@ -1263,7 +1263,7 @@ class FibonacciRetracementStrategy(BaseStrategy):
                 swing_lookback,
                 "swing_lookback",
                 min_value=1,
-                max_value=ValidationLimits.MAX_CONSECUTIVE_DAYS
+                max_value=ValidationLimits.MAX_INDICATOR_PERIOD
             )
             self.swing_lookback = swing_lookback
 
