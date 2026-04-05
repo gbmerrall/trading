@@ -60,37 +60,37 @@ backtest/
 ### Testing
 ```bash
 # Run full test suite with coverage
-pipenv run pytest --cov=. -v
+uv run pytest --cov=. -v
 
 # Run specific test file
-pipenv run pytest tests/test_portfolio.py -v
+uv run pytest tests/test_portfolio.py -v
 
 # Run tests matching a pattern
-pipenv run pytest -k "test_consecutive" -v
+uv run pytest -k "test_consecutive" -v
 ```
 
 ### Linting
 ```bash
 # Check code formatting/style
-pipenv run ruff check .
+uv run ruff check .
 
 # Auto-fix linting issues
-pipenv run ruff check . --fix
+uv run ruff check . --fix
 ```
 
 ### Running Backtests
 ```bash
 # Run example backtest
-pipenv run python examples/run_backtest.py
+uv run python examples/run_backtest.py
 ```
 
 ### Development Setup
 ```bash
 # Install dependencies (first time)
-pipenv install --dev
+uv install --dev
 
 # Activate virtual environment (optional)
-pipenv shell
+uv shell
 
 # Verify Python path (MUST be inside virtual environment)
 which python
@@ -144,7 +144,7 @@ All benchmarks must:
 
 ## Critical Constraints
 
-1. **Pipenv Environment**: Always run Python commands inside the pipenv virtual environment. Check with `which python` first.
+1. **uv Environment**: Always run Python commands inside the uv virtual environment. Check with `which python` first.
 2. **Test Coverage**: Aim for 75%+ coverage. Run coverage reports periodically with `pytest --cov=backtest -v`.
 3. **Input Validation**: Validate all external inputs at system boundaries (user input, data loading).
 4. **No Over-Engineering**: Keep solutions simple. Don't add features beyond requirements.

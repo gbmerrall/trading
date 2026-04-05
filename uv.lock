@@ -11,6 +11,43 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "backtest"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "kaleido" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "plotly" },
+    { name = "pyyaml" },
+    { name = "ta" },
+    { name = "yfinance" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "kaleido", specifier = ">=1.2.0" },
+    { name = "numpy", specifier = ">=2.4.4" },
+    { name = "pandas", specifier = ">=3.0.2" },
+    { name = "plotly", specifier = ">=6.6.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "ta", specifier = ">=0.11.0" },
+    { name = "yfinance", specifier = ">=1.2.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.14.3"
 source = { registry = "https://pypi.org/simple" }
@@ -790,43 +827,6 @@ dependencies = [
     { name = "pandas" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e0/9a/37d92a6b470dc9088612c2399a68f1a9ac22872d4e1eff416818e22ab11b/ta-0.11.0.tar.gz", hash = "sha256:de86af43418420bd6b088a2ea9b95483071bf453c522a8441bc2f12bcf8493fd", size = 25308, upload-time = "2023-11-02T13:53:35.434Z" }
-
-[[package]]
-name = "trading"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "kaleido" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "plotly" },
-    { name = "pyyaml" },
-    { name = "ta" },
-    { name = "yfinance" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "kaleido", specifier = ">=1.2.0" },
-    { name = "numpy", specifier = ">=2.4.4" },
-    { name = "pandas", specifier = ">=3.0.2" },
-    { name = "plotly", specifier = ">=6.6.0" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "ta", specifier = ">=0.11.0" },
-    { name = "yfinance", specifier = ">=1.2.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-]
 
 [[package]]
 name = "typing-extensions"

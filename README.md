@@ -10,15 +10,25 @@ Still a work in progress as interest waxes and wanes. Don't expect to get rich b
 
 ## Installation
 
-Requires Python 3.10+.
+Requires Python 3.12+.
+
+### With uv (recommended)
+
+```bash
+uv sync
+```
+
+That installs all dependencies and the `backtest` package itself as an editable install.
+
+### With pip
 
 ```bash
 # Create and activate a virtual environment
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install as editable package (includes all dependencies)
+pip install -e .
 ```
 
 ---
