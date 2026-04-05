@@ -185,31 +185,28 @@ class ConsecutiveDaysStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            # Calculate price changes
-            price_change = close_prices.diff()
+        # Calculate price changes
+        price_change = close_prices.diff()
 
-            # Buy signal: consecutive_days of down days
-            down_days = price_change < 0
-            consecutive_down = down_days.rolling(
-                window=self.consecutive_days, 
-                min_periods=self.consecutive_days
-            ).sum() == self.consecutive_days
-            signals['buy'] = consecutive_down
+        # Buy signal: consecutive_days of down days
+        down_days = price_change < 0
+        consecutive_down = down_days.rolling(
+            window=self.consecutive_days, 
+            min_periods=self.consecutive_days
+        ).sum() == self.consecutive_days
+        signals['buy'] = consecutive_down
 
-            # Sell signal: consecutive_days of up days  
-            up_days = price_change > 0
-            consecutive_up = up_days.rolling(
-                window=self.consecutive_days,
-                min_periods=self.consecutive_days
-            ).sum() == self.consecutive_days
-            signals['sell'] = consecutive_up
+        # Sell signal: consecutive_days of up days  
+        up_days = price_change > 0
+        consecutive_up = up_days.rolling(
+            window=self.consecutive_days,
+            min_periods=self.consecutive_days
+        ).sum() == self.consecutive_days
+        signals['sell'] = consecutive_up
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
-            
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
+        
 
         return signals
 
@@ -335,28 +332,25 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            # Calculate moving averages using simple rolling mean
-            close_prices = data['Close']
-            short_ma = close_prices.rolling(window=self.short_window, min_periods=self.short_window).mean()
-            long_ma = close_prices.rolling(window=self.long_window, min_periods=self.long_window).mean()
+        # Calculate moving averages using simple rolling mean
+        close_prices = data['Close']
+        short_ma = close_prices.rolling(window=self.short_window, min_periods=self.short_window).mean()
+        long_ma = close_prices.rolling(window=self.long_window, min_periods=self.long_window).mean()
 
-            # Detect crossovers
-            # Golden cross: short MA crosses above long MA (buy signal)
-            # Previous day: short_ma <= long_ma, Current day: short_ma > long_ma
-            golden_cross = (short_ma > long_ma) & (short_ma.shift(1) <= long_ma.shift(1))
-            signals['buy'] = golden_cross
+        # Detect crossovers
+        # Golden cross: short MA crosses above long MA (buy signal)
+        # Previous day: short_ma <= long_ma, Current day: short_ma > long_ma
+        golden_cross = (short_ma > long_ma) & (short_ma.shift(1) <= long_ma.shift(1))
+        signals['buy'] = golden_cross
 
-            # Death cross: short MA crosses below long MA (sell signal)
-            # Previous day: short_ma >= long_ma, Current day: short_ma < long_ma
-            death_cross = (short_ma < long_ma) & (short_ma.shift(1) >= long_ma.shift(1))
-            signals['sell'] = death_cross
+        # Death cross: short MA crosses below long MA (sell signal)
+        # Previous day: short_ma >= long_ma, Current day: short_ma < long_ma
+        death_cross = (short_ma < long_ma) & (short_ma.shift(1) >= long_ma.shift(1))
+        signals['sell'] = death_cross
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -504,21 +498,18 @@ class RSIStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            # Calculate RSI using ta library
-            rsi = ta.momentum.RSIIndicator(close=data['Close'], window=self.period).rsi()
+        # Calculate RSI using ta library
+        rsi = ta.momentum.RSIIndicator(close=data['Close'], window=self.period).rsi()
 
-            # Buy signal: RSI below lower_bound (oversold)
-            signals['buy'] = rsi < self.lower_bound
+        # Buy signal: RSI below lower_bound (oversold)
+        signals['buy'] = rsi < self.lower_bound
 
-            # Sell signal: RSI above upper_bound (overbought)
-            signals['sell'] = rsi > self.upper_bound
+        # Sell signal: RSI above upper_bound (overbought)
+        signals['sell'] = rsi > self.upper_bound
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -661,32 +652,29 @@ class MACDStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            # Calculate MACD using ta library
-            macd_indicator = ta.trend.MACD(
-                close=data['Close'],
-                window_fast=self.fast,
-                window_slow=self.slow,
-                window_sign=self.signal
-            )
-            macd_line = macd_indicator.macd()
-            signal_line = macd_indicator.macd_signal()
+        # Calculate MACD using ta library
+        macd_indicator = ta.trend.MACD(
+            close=data['Close'],
+            window_fast=self.fast,
+            window_slow=self.slow,
+            window_sign=self.signal
+        )
+        macd_line = macd_indicator.macd()
+        signal_line = macd_indicator.macd_signal()
 
-            # Buy signal: MACD crosses above signal line (bullish crossover)
-            # Previous day: macd <= signal, Current day: macd > signal
-            bullish_cross = (macd_line > signal_line) & (macd_line.shift(1) <= signal_line.shift(1))
-            signals['buy'] = bullish_cross
+        # Buy signal: MACD crosses above signal line (bullish crossover)
+        # Previous day: macd <= signal, Current day: macd > signal
+        bullish_cross = (macd_line > signal_line) & (macd_line.shift(1) <= signal_line.shift(1))
+        signals['buy'] = bullish_cross
 
-            # Sell signal: MACD crosses below signal line (bearish crossover)
-            # Previous day: macd >= signal, Current day: macd < signal
-            bearish_cross = (macd_line < signal_line) & (macd_line.shift(1) >= signal_line.shift(1))
-            signals['sell'] = bearish_cross
+        # Sell signal: MACD crosses below signal line (bearish crossover)
+        # Previous day: macd >= signal, Current day: macd < signal
+        bearish_cross = (macd_line < signal_line) & (macd_line.shift(1) >= signal_line.shift(1))
+        signals['sell'] = bearish_cross
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -800,28 +788,25 @@ class BollingerBandsStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            # Calculate Bollinger Bands using ta library
-            bb_indicator = ta.volatility.BollingerBands(
-                close=data['Close'],
-                window=self.period,
-                window_dev=self.std_dev
-            )
-            lower_band = bb_indicator.bollinger_lband()
-            upper_band = bb_indicator.bollinger_hband()
-            close_prices = data['Close']
+        # Calculate Bollinger Bands using ta library
+        bb_indicator = ta.volatility.BollingerBands(
+            close=data['Close'],
+            window=self.period,
+            window_dev=self.std_dev
+        )
+        lower_band = bb_indicator.bollinger_lband()
+        upper_band = bb_indicator.bollinger_hband()
+        close_prices = data['Close']
 
-            # Buy signal: price touches or breaks below lower band (mean reversion)
-            signals['buy'] = close_prices <= lower_band
+        # Buy signal: price touches or breaks below lower band (mean reversion)
+        signals['buy'] = close_prices <= lower_band
 
-            # Sell signal: price touches or breaks above upper band (mean reversion)
-            signals['sell'] = close_prices >= upper_band
+        # Sell signal: price touches or breaks above upper band (mean reversion)
+        signals['sell'] = close_prices >= upper_band
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -948,36 +933,33 @@ class ParabolicSARStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            # Calculate Parabolic SAR using ta library
-            psar_indicator = ta.trend.PSARIndicator(
-                high=data['High'],
-                low=data['Low'],
-                close=data['Close'],
-                step=self.af,
-                max_step=self.max_af
-            )
-            psar = psar_indicator.psar()
-            close_prices = data['Close']
+        # Calculate Parabolic SAR using ta library
+        psar_indicator = ta.trend.PSARIndicator(
+            high=data['High'],
+            low=data['Low'],
+            close=data['Close'],
+            step=self.af,
+            max_step=self.max_af
+        )
+        psar = psar_indicator.psar()
+        close_prices = data['Close']
 
-            # Align the psar series with the data index (ta library may alter index)
-            psar = psar.reindex(data.index)
+        # Align the psar series with the data index (ta library may alter index)
+        psar = psar.reindex(data.index)
 
-            # Buy signal: price crosses above SAR (SAR switches from above to below price)
-            prev_below = close_prices.shift(1) < psar.shift(1)
-            curr_above = close_prices > psar
-            signals['buy'] = prev_below & curr_above
+        # Buy signal: price crosses above SAR (SAR switches from above to below price)
+        prev_below = close_prices.shift(1) < psar.shift(1)
+        curr_above = close_prices > psar
+        signals['buy'] = prev_below & curr_above
 
-            # Sell signal: price crosses below SAR (SAR switches from below to above price)
-            prev_above = close_prices.shift(1) > psar.shift(1)
-            curr_below = close_prices < psar
-            signals['sell'] = prev_above & curr_below
+        # Sell signal: price crosses below SAR (SAR switches from below to above price)
+        prev_above = close_prices.shift(1) > psar.shift(1)
+        curr_below = close_prices < psar
+        signals['sell'] = prev_above & curr_below
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -1073,32 +1055,29 @@ class BreakoutStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            close_prices = data['Close']
+        close_prices = data['Close']
 
-            # Calculate rolling high and low over lookback period
-            rolling_high = close_prices.rolling(
-                window=self.lookback_period,
-                min_periods=self.lookback_period
-            ).max()
-            rolling_low = close_prices.rolling(
-                window=self.lookback_period,
-                min_periods=self.lookback_period
-            ).min()
+        # Calculate rolling high and low over lookback period
+        rolling_high = close_prices.rolling(
+            window=self.lookback_period,
+            min_periods=self.lookback_period
+        ).max()
+        rolling_low = close_prices.rolling(
+            window=self.lookback_period,
+            min_periods=self.lookback_period
+        ).min()
 
-            # Buy signal: price exceeds the N-day high (breakout)
-            # Compare current price to previous period's high
-            signals['buy'] = close_prices > rolling_high.shift(1)
+        # Buy signal: price exceeds the N-day high (breakout)
+        # Compare current price to previous period's high
+        signals['buy'] = close_prices > rolling_high.shift(1)
 
-            # Sell signal: price breaks below the N-day low (breakdown)
-            # Compare current price to previous period's low
-            signals['sell'] = close_prices < rolling_low.shift(1)
+        # Sell signal: price breaks below the N-day low (breakdown)
+        # Compare current price to previous period's low
+        signals['sell'] = close_prices < rolling_low.shift(1)
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -1195,27 +1174,24 @@ class GapStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            close_prices = data['Close']
-            open_prices = data['Open']
+        close_prices = data['Close']
+        open_prices = data['Open']
 
-            # Calculate gap: (open - previous close) / previous close
-            prev_close = close_prices.shift(1)
-            gap_pct = (open_prices - prev_close) / prev_close
+        # Calculate gap: (open - previous close) / previous close
+        prev_close = close_prices.shift(1)
+        gap_pct = (open_prices - prev_close) / prev_close
 
-            # Buy signal: gap down (negative gap) exceeding threshold
-            # Expecting the gap to fill (price to rise back)
-            signals['buy'] = gap_pct < -self.min_gap_pct
+        # Buy signal: gap down (negative gap) exceeding threshold
+        # Expecting the gap to fill (price to rise back)
+        signals['buy'] = gap_pct < -self.min_gap_pct
 
-            # Sell signal: gap up (positive gap) exceeding threshold
-            # Expecting reversal or fade
-            signals['sell'] = gap_pct > self.min_gap_pct
+        # Sell signal: gap up (positive gap) exceeding threshold
+        # Expecting reversal or fade
+        signals['sell'] = gap_pct > self.min_gap_pct
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -1343,60 +1319,57 @@ class FibonacciRetracementStrategy(BaseStrategy):
         signals['buy'] = False
         signals['sell'] = False
 
-        try:
-            close_prices = data['Close']
-            high_prices = data['High']
-            low_prices = data['Low']
+        close_prices = data['Close']
+        high_prices = data['High']
+        low_prices = data['Low']
 
-            # Calculate swing high and low over lookback period
-            swing_high = high_prices.rolling(
-                window=self.swing_lookback,
-                min_periods=self.swing_lookback
-            ).max()
-            swing_low = low_prices.rolling(
-                window=self.swing_lookback,
-                min_periods=self.swing_lookback
-            ).min()
+        # Calculate swing high and low over lookback period
+        swing_high = high_prices.rolling(
+            window=self.swing_lookback,
+            min_periods=self.swing_lookback
+        ).max()
+        swing_low = low_prices.rolling(
+            window=self.swing_lookback,
+            min_periods=self.swing_lookback
+        ).min()
 
-            # Calculate swing range
-            swing_range = swing_high - swing_low
+        # Calculate swing range
+        swing_range = swing_high - swing_low
 
-            # Only generate signals when there is a meaningful swing range
-            # If swing_range is 0 or near-zero, no retracement levels exist
-            has_swing = swing_range > 0
+        # Only generate signals when there is a meaningful swing range
+        # If swing_range is 0 or near-zero, no retracement levels exist
+        has_swing = swing_range > 0
 
-            # Find support level (61.8% retracement from high)
-            # Support = swing_low + swing_range * 0.618
-            support_level = swing_low + swing_range * 0.618
+        # Find support level (61.8% retracement from high)
+        # Support = swing_low + swing_range * 0.618
+        support_level = swing_low + swing_range * 0.618
 
-            # Find resistance level (38.2% retracement from high)
-            # Resistance = swing_low + swing_range * 0.382
-            resistance_level = swing_low + swing_range * 0.382
+        # Find resistance level (38.2% retracement from high)
+        # Resistance = swing_low + swing_range * 0.382
+        resistance_level = swing_low + swing_range * 0.382
 
-            # Define tolerance for "near" (2% of swing range)
-            tolerance = swing_range * 0.02
+        # Define tolerance for "near" (2% of swing range)
+        tolerance = swing_range * 0.02
 
-            # Buy signal: price is near support level (within tolerance)
-            # Price close to 61.8% retracement indicates potential bounce
-            # Only signal when there is a meaningful swing range
-            near_support = (close_prices >= support_level - tolerance) & (
-                close_prices <= support_level + tolerance
-            ) & has_swing
-            signals['buy'] = near_support
+        # Buy signal: price is near support level (within tolerance)
+        # Price close to 61.8% retracement indicates potential bounce
+        # Only signal when there is a meaningful swing range
+        near_support = (close_prices >= support_level - tolerance) & (
+            close_prices <= support_level + tolerance
+        ) & has_swing
+        signals['buy'] = near_support
 
-            # Sell signal: price is near resistance level (within tolerance)
-            # Price close to 38.2% retracement indicates potential rejection
-            # Only signal when there is a meaningful swing range
-            near_resistance = (close_prices >= resistance_level - tolerance) & (
-                close_prices <= resistance_level + tolerance
-            ) & has_swing
-            signals['sell'] = near_resistance
+        # Sell signal: price is near resistance level (within tolerance)
+        # Price close to 38.2% retracement indicates potential rejection
+        # Only signal when there is a meaningful swing range
+        near_resistance = (close_prices >= resistance_level - tolerance) & (
+            close_prices <= resistance_level + tolerance
+        ) & has_swing
+        signals['sell'] = near_resistance
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -1519,32 +1492,29 @@ class MeanReversionStrategy(BaseStrategy):
                 f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
             )
 
-        try:
-            signals = pd.DataFrame(index=data.index)
-            close_prices = data['Close']
+        signals = pd.DataFrame(index=data.index)
+        close_prices = data['Close']
 
-            # Calculate RSI
-            rsi_indicator = ta.momentum.RSIIndicator(close=close_prices, window=self.rsi_period)
-            rsi = rsi_indicator.rsi()
+        # Calculate RSI
+        rsi_indicator = ta.momentum.RSIIndicator(close=close_prices, window=self.rsi_period)
+        rsi = rsi_indicator.rsi()
 
-            # Calculate Bollinger Bands
-            bb_indicator = ta.volatility.BollingerBands(
-                close=close_prices,
-                window=self.bb_period,
-                window_dev=self.bb_std
-            )
-            lower_band = bb_indicator.bollinger_lband()
-            upper_band = bb_indicator.bollinger_hband()
+        # Calculate Bollinger Bands
+        bb_indicator = ta.volatility.BollingerBands(
+            close=close_prices,
+            window=self.bb_period,
+            window_dev=self.bb_std
+        )
+        lower_band = bb_indicator.bollinger_lband()
+        upper_band = bb_indicator.bollinger_hband()
 
-            # Generate signals: both conditions must be true
-            signals['buy'] = (rsi < self.rsi_lower) & (close_prices < lower_band)
-            signals['sell'] = (rsi > self.rsi_upper) & (close_prices > upper_band)
+        # Generate signals: both conditions must be true
+        signals['buy'] = (rsi < self.rsi_lower) & (close_prices < lower_band)
+        signals['sell'] = (rsi > self.rsi_upper) & (close_prices > upper_band)
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -1637,27 +1607,24 @@ class MomentumStrategy(BaseStrategy):
                 f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
             )
 
-        try:
-            signals = pd.DataFrame(index=data.index)
-            close_prices = data['Close']
+        signals = pd.DataFrame(index=data.index)
+        close_prices = data['Close']
 
-            # Calculate ROC - returns percentage change (0-100 scale)
-            roc_indicator = ta.momentum.ROCIndicator(close=close_prices, window=self.roc_period)
-            roc = roc_indicator.roc()
+        # Calculate ROC - returns percentage change (0-100 scale)
+        roc_indicator = ta.momentum.ROCIndicator(close=close_prices, window=self.roc_period)
+        roc = roc_indicator.roc()
 
-            # Convert threshold to percentage (0-100 scale) for comparison with ROC
-            # ROC in ta library returns values like 5.0 for 5% change
-            threshold_pct = self.roc_threshold * 100
+        # Convert threshold to percentage (0-100 scale) for comparison with ROC
+        # ROC in ta library returns values like 5.0 for 5% change
+        threshold_pct = self.roc_threshold * 100
 
-            # Generate signals based on ROC thresholds
-            signals['buy'] = roc > threshold_pct
-            signals['sell'] = roc < -threshold_pct
+        # Generate signals based on ROC thresholds
+        signals['buy'] = roc > threshold_pct
+        signals['sell'] = roc < -threshold_pct
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -1759,40 +1726,37 @@ class VolatilityStrategy(BaseStrategy):
                 f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
             )
 
-        try:
-            signals = pd.DataFrame(index=data.index)
-            close_prices = data['Close']
+        signals = pd.DataFrame(index=data.index)
+        close_prices = data['Close']
 
-            # Calculate ATR
-            atr_indicator = ta.volatility.AverageTrueRange(
-                high=data['High'],
-                low=data['Low'],
-                close=close_prices,
-                window=self.atr_period
-            )
-            atr = atr_indicator.average_true_range()
+        # Calculate ATR
+        atr_indicator = ta.volatility.AverageTrueRange(
+            high=data['High'],
+            low=data['Low'],
+            close=close_prices,
+            window=self.atr_period
+        )
+        atr = atr_indicator.average_true_range()
 
-            # Calculate ATR threshold for high volatility
-            # Use rolling mean ATR to adapt to changing market conditions
-            mean_atr = atr.rolling(window=self.atr_period).mean()
-            high_volatility = atr > (mean_atr * self.atr_multiplier)
+        # Calculate ATR threshold for high volatility
+        # Use rolling mean ATR to adapt to changing market conditions
+        mean_atr = atr.rolling(window=self.atr_period).mean()
+        high_volatility = atr > (mean_atr * self.atr_multiplier)
 
-            # Calculate breakout levels
-            highest_high = data['High'].rolling(window=self.breakout_period).max()
-            lowest_low = data['Low'].rolling(window=self.breakout_period).min()
+        # Calculate breakout levels
+        highest_high = data['High'].rolling(window=self.breakout_period).max()
+        lowest_low = data['Low'].rolling(window=self.breakout_period).min()
 
-            # Generate signals: breakout + high volatility
-            # Buy when close breaks above recent high during high volatility
-            signals['buy'] = (close_prices > highest_high.shift(1)) & high_volatility
+        # Generate signals: breakout + high volatility
+        # Buy when close breaks above recent high during high volatility
+        signals['buy'] = (close_prices > highest_high.shift(1)) & high_volatility
 
-            # Sell when close breaks below recent low during high volatility
-            signals['sell'] = (close_prices < lowest_low.shift(1)) & high_volatility
+        # Sell when close breaks below recent low during high volatility
+        signals['sell'] = (close_prices < lowest_low.shift(1)) & high_volatility
 
-            # Shift signals to trade on the next day's open
-            signals = signals.shift(1).fillna(False)
+        # Shift signals to trade on the next day's open
+        signals = signals.shift(1).fillna(False)
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals
 
@@ -1899,30 +1863,27 @@ class EnsembleStrategy(BaseStrategy):
                 f"Insufficient data. Need at least {self.warmup_period} rows, got {len(data)}"
             )
 
-        try:
-            # Generate signals from each sub-strategy
-            all_buy_signals = []
-            all_sell_signals = []
+        # Generate signals from each sub-strategy
+        all_buy_signals = []
+        all_sell_signals = []
 
-            for strategy in self.strategies:
-                sub_signals = strategy.generate_signals(data)
-                all_buy_signals.append(sub_signals['buy'])
-                all_sell_signals.append(sub_signals['sell'])
+        for strategy in self.strategies:
+            sub_signals = strategy.generate_signals(data)
+            all_buy_signals.append(sub_signals['buy'])
+            all_sell_signals.append(sub_signals['sell'])
 
-            # Aggregate signals using majority voting
-            # Count how many strategies voted for each signal
-            buy_votes = pd.DataFrame(all_buy_signals).T.sum(axis=1)
-            sell_votes = pd.DataFrame(all_sell_signals).T.sum(axis=1)
+        # Aggregate signals using majority voting
+        # Count how many strategies voted for each signal
+        buy_votes = pd.DataFrame(all_buy_signals).T.sum(axis=1)
+        sell_votes = pd.DataFrame(all_sell_signals).T.sum(axis=1)
 
-            # Generate final signals based on min_agreement threshold
-            signals = pd.DataFrame(index=data.index)
-            signals['buy'] = buy_votes >= self.min_agreement
-            signals['sell'] = sell_votes >= self.min_agreement
+        # Generate final signals based on min_agreement threshold
+        signals = pd.DataFrame(index=data.index)
+        signals['buy'] = buy_votes >= self.min_agreement
+        signals['sell'] = sell_votes >= self.min_agreement
 
-            # Note: Individual strategies already shift their signals,
-            # so no additional shifting needed here
+        # Note: Individual strategies already shift their signals,
+        # so no additional shifting needed here
 
-        except Exception as e:
-            raise ValidationError(f"Error generating signals: {str(e)}") from e
 
         return signals

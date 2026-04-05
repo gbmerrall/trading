@@ -226,11 +226,9 @@ class DollarCostAveraging(BaseBenchmark):
         elif self.frequency == 'weekly':
             # Invest on Mondays (weekday 0)
             return all_dates[all_dates.weekday == 0]
-        elif self.frequency == 'monthly':
-            # Invest on first day of each month
-            return all_dates[all_dates.day == 1]
         else:
-            raise ValidationError(f"Invalid frequency: {self.frequency}")
+            # monthly: invest on first day of each month
+            return all_dates[all_dates.day == 1]
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
