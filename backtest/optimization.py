@@ -136,3 +136,26 @@ def _generate_windows(
         test_start += test_size
 
     return windows
+
+
+def _filter_by_warmup(
+    portfolio_history: list[dict],
+    trades: list[dict],
+    cutoff_date: pd.Timestamp,
+) -> tuple[list[dict], list[dict]]:
+    """Remove portfolio history entries and trades before the cutoff date.
+
+    This is used to exclude the warmup period from metric scoring after
+    BacktestRunnerImpl has run on the full window slice.
+
+    Args:
+        portfolio_history: List of {'date', 'value'} dicts.
+        trades: List of trade dicts with 'exit_date' key.
+        cutoff_date: First date to INCLUDE in the filtered output.
+
+    Returns:
+        Tuple of (filtered_portfolio_history, filtered_trades).
+    """
+    filtered_history = [e for e in portfolio_history if e["date"] >= cutoff_date]
+    filtered_trades = [t for t in trades if t["exit_date"] >= cutoff_date]
+    return filtered_history, filtered_trades

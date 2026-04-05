@@ -162,3 +162,68 @@ class TestGenerateWindows:
         data = self._make_data(200)
         with pytest.raises(ValidationError):
             _generate_windows(data, train_size=100, test_size=50, window_type="invalid")
+
+
+class TestFilterByWarmup:
+    """Tests for the _filter_by_warmup module-level function."""
+
+    def _make_history(self, dates):
+        return [{"date": d, "value": 10000.0 + i * 10} for i, d in enumerate(dates)]
+
+    def _make_trades(self, exit_dates):
+        return [
+            {
+                "entry_date": d - pd.Timedelta(days=1),
+                "exit_date": d,
+                "entry": 100.0,
+                "exit": 110.0,
+                "shares": 1,
+                "pnl": 10.0,
+            }
+            for d in exit_dates
+        ]
+
+    def test_removes_history_before_cutoff(self):
+        from backtest.optimization import _filter_by_warmup
+        dates = pd.date_range("2020-01-01", periods=10, freq="B")
+        history = self._make_history(dates)
+        cutoff = dates[3]
+        filtered_h, _ = _filter_by_warmup(history, [], cutoff)
+        assert all(e["date"] >= cutoff for e in filtered_h)
+        assert len(filtered_h) == 7
+
+    def test_removes_trades_before_cutoff(self):
+        from backtest.optimization import _filter_by_warmup
+        dates = pd.date_range("2020-01-01", periods=10, freq="B")
+        trades = self._make_trades(dates)
+        cutoff = dates[5]
+        _, filtered_t = _filter_by_warmup([], trades, cutoff)
+        assert all(t["exit_date"] >= cutoff for t in filtered_t)
+        assert len(filtered_t) == 5
+
+    def test_empty_inputs_return_empty(self):
+        from backtest.optimization import _filter_by_warmup
+        cutoff = pd.Timestamp("2020-01-10")
+        h, t = _filter_by_warmup([], [], cutoff)
+        assert h == []
+        assert t == []
+
+    def test_cutoff_at_start_returns_all(self):
+        from backtest.optimization import _filter_by_warmup
+        dates = pd.date_range("2020-01-01", periods=5, freq="B")
+        history = self._make_history(dates)
+        trades = self._make_trades(dates)
+        cutoff = dates[0]
+        h, t = _filter_by_warmup(history, trades, cutoff)
+        assert len(h) == 5
+        assert len(t) == 5
+
+    def test_cutoff_after_all_returns_empty(self):
+        from backtest.optimization import _filter_by_warmup
+        dates = pd.date_range("2020-01-01", periods=5, freq="B")
+        history = self._make_history(dates)
+        trades = self._make_trades(dates)
+        cutoff = dates[-1] + pd.Timedelta(days=1)
+        h, t = _filter_by_warmup(history, trades, cutoff)
+        assert h == []
+        assert t == []
