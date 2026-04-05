@@ -1820,17 +1820,17 @@ class EnsembleStrategy(BaseStrategy):
         Raises:
             ValidationError: If parameters are invalid
         """
-        self.strategies = strategies if strategies else []
+        self.strategies = strategies
         self.min_agreement = min_agreement
         self._validate_parameters()
 
     def _validate_parameters(self):
         """Validate strategy parameters."""
-        if not self.strategies or len(self.strategies) == 0:
-            raise ValidationError("Ensemble strategy requires at least one strategy")
-
         if not isinstance(self.strategies, list):
             raise ValidationError("strategies must be a list")
+
+        if len(self.strategies) == 0:
+            raise ValidationError("Ensemble strategy requires at least one strategy")
 
         for i, strategy in enumerate(self.strategies):
             if not isinstance(strategy, BaseStrategy):
