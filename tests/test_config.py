@@ -1,11 +1,9 @@
-import pytest
+import os
 import tempfile
 from pathlib import Path
 
-# Add project root to the Python path
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import pytest
+
 
 from backtest.config import (
     TradingConstants, ValidationLimits, FileConfig,
@@ -28,7 +26,6 @@ class TestTradingConstants:
         """Test default values."""
         assert TradingConstants.DEFAULT_MARKET_BENCHMARK == 'SPY'
         assert TradingConstants.PERCENT_MULTIPLIER == 100.0
-        assert TradingConstants.DEFAULT_CUMULATIVE_RETURN_BASE == 1.0
 
 
 class TestValidationLimits:
@@ -55,7 +52,6 @@ class TestPortfolioConfig:
         assert config.start_capital == 10_000.0
         assert config.commission_rate == 0.0
         assert config.default_symbol == 'ASSET'
-        assert config.track_detailed_history is True
     
     def test_validation_success(self):
         """Test successful validation."""
@@ -109,8 +105,6 @@ class TestBenchmarkConfig:
         config = BenchmarkConfig()
         assert config.market_symbol == 'SPY'
         assert config.dca_frequency == 'monthly'
-        assert config.download_timeout == 30
-        assert config.cache_benchmark_data is False
     
     def test_validation_success(self):
         """Test successful validation."""

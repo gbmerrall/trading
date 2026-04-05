@@ -26,7 +26,6 @@ class FileConfig:
     
     # File naming
     TIMESTAMP_FORMAT = '%Y-%m-%dT%H%M'
-    DEFAULT_PLOT_DPI = 300
     DEFAULT_PLOT_WIDTH = 12
     DEFAULT_PLOT_HEIGHT = 8
     
@@ -44,23 +43,10 @@ class FileConfig:
 class PortfolioConfig:
     """Configuration for portfolio management."""
     
-    # Default portfolio settings
     start_capital: float = 10_000.0
     commission_rate: float = 0.0
     default_symbol: str = 'ASSET'
-    
-    # Position management
-    max_position_size: Optional[float] = None  # None = no limit
-    max_positions: Optional[int] = None        # None = no limit
-    
-    # Risk management
-    max_drawdown_limit: Optional[float] = None  # Stop trading if exceeded
-    max_daily_loss: Optional[float] = None      # Daily loss limit
-    
-    # Reporting
-    track_detailed_history: bool = True
-    calculate_metrics: bool = True
-    
+
     def validate(self) -> None:
         """Validate portfolio configuration."""
         if self.start_capital < ValidationLimits.MIN_START_CAPITAL:
@@ -105,19 +91,10 @@ class StrategyConfig:
 class BenchmarkConfig:
     """Configuration for benchmark strategies."""
     
-    # Market benchmark settings
     market_symbol: str = TradingConstants.DEFAULT_MARKET_BENCHMARK
-    download_timeout: int = 30  # seconds
-    retry_attempts: int = 3
-    
-    # DCA settings
     dca_frequency: str = 'monthly'
     valid_frequencies: List[str] = field(default_factory=lambda: ['daily', 'weekly', 'monthly'])
-    
-    # Caching
-    cache_benchmark_data: bool = False
-    cache_duration_hours: int = 24
-    
+
     def validate(self) -> None:
         """Validate benchmark configuration."""
         if self.dca_frequency not in self.valid_frequencies:
@@ -133,8 +110,7 @@ class BacktestConfig:
     # Execution settings
     verbose: bool = True
     save_plots: bool = True
-    save_data: bool = False
-    
+
     # Plot settings
     plot_title: str = "Equity Curves"
     plot_colors: Dict[str, str] = field(default_factory=lambda: {
@@ -169,16 +145,10 @@ class GlobalConfig:
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
-    
-    # Environment settings
     environment: str = 'development'  # 'development', 'testing', 'production'
     debug: bool = False
     log_level: str = 'INFO'
-    
-    # Data source settings
-    data_source: str = 'yfinance'
-    data_cache_enabled: bool = True
-    
+
     def validate(self) -> None:
         """Validate all configuration components."""
         self.portfolio.validate()

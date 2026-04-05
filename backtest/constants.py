@@ -16,15 +16,9 @@ class TradingConstants:
 
     # Common market symbols
     DEFAULT_MARKET_BENCHMARK = "SPY"
-    ALTERNATIVE_BENCHMARKS = ["QQQ", "IWM", "DIA"]
 
     # Percentage calculations
     PERCENT_MULTIPLIER = 100.0
-    BASIS_POINTS_MULTIPLIER = 10000.0
-
-    # Default ratios
-    DEFAULT_CUMULATIVE_RETURN_BASE = 1.0
-    EXTREME_PRICE_VARIATION_THRESHOLD = 1000  # max/min price ratio
 
 
 class ValidationLimits:
