@@ -1,0 +1,71 @@
+I'd like you to review this code. Start with @CLAUDE.md and the other markdown files in this directory. Then look for any opportunities for improvement, rafactoring, optimisation along with dead code or any code smells etc. Report your findings
+
+---
+
+OK test stuff is installed
+
+---
+
+please fix all issues starting with critical. After each fix, please commit.
+
+---
+
+yes please
+
+---
+
+Was Walk-Forward Analysis implemented?
+
+---
+
+well! Seems like we need to get on it. Please commence implementation. WHat information do you need to start?
+
+---
+
+Total Return/CAGR for profit; Sharpe, Sortino, and Calmar for risk-adjusted returns; Max Drawdown and Ulcer Index for risk; and
+  Profit Factor, Win Rate, Expectancy, and Recovery Factor for efficiency and recovery
+
+Too much?
+
+---
+
+both please
+
+---
+
+Both I think
+
+---
+
+B please
+
+---
+
+B please
+
+---
+
+yes
+
+---
+
+seems fine. proceed
+
+---
+
+seems fine. proceed
+
+---
+
+yes please
+
+---
+
+The spec states: "The method signature and return dict keys are unchanged; existing tests pass without modification."
+  Currently, tests/test_runner.py asserts the existence of exactly four keys: total_return, win_rate, num_trades, and max_drawdown. When we refactor
+  runner._calculate_metrics() to call metrics.py, we must ensure it still returns exactly that dictionary structure, rather than dumping all 10 metrics into the
+  standard backtest result (which could break downstream consumers or tests).
+
+---
+
+sort of side question: Since this is computationally heavy, is there any GPU related improvement we could add? No is a valid answer :)
