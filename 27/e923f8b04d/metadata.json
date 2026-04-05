@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "27e923f8b04d",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "tests/test_momentum_strategy.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/27/e923f8b04d/0/metadata.json",
+      "transcript": "/27/e923f8b04d/0/full.jsonl",
+      "content_hash": "/27/e923f8b04d/0/content_hash.txt",
+      "prompt": "/27/e923f8b04d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 152,
+    "cache_creation_tokens": 114694,
+    "cache_read_tokens": 10109937,
+    "output_tokens": 38039,
+    "api_call_count": 141
+  }
+}
