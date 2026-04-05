@@ -3,3 +3,7 @@ I'd like you to review this code. Start with @CLAUDE.md and the other markdown f
 ---
 
 OK test stuff is installed
+
+---
+
+please fix all issues starting with critical. After each fix, please commit.
