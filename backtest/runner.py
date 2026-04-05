@@ -8,6 +8,7 @@ from .validation import (
 )
 from .config import get_backtest_config, get_portfolio_config, FileConfig
 from .constants import TradingConstants, ValidationLimits
+from . import metrics as _metrics
 
 
 class BacktestRunnerImpl:
@@ -101,36 +102,28 @@ class BacktestRunnerImpl:
                     'max_drawdown': 0.0
                 }
 
-            returns_df = pd.DataFrame(portfolio_history).set_index('date')['value']
-            
-            # Total Return
-            start_value = returns_df.iloc[0]
-            end_value = returns_df.iloc[-1]
-            
+            start_value = portfolio_history[0]["value"]
             if start_value <= 0:
                 raise ValidationError(f"Invalid start value: {start_value}")
+
+            pct = TradingConstants.PERCENT_MULTIPLIER
             
-            total_return = (end_value / start_value - 1) * TradingConstants.PERCENT_MULTIPLIER
-
-            # Win Rate
-            if not trades:
-                win_rate = 0.0
-            else:
-                wins = sum(1 for trade in trades if trade.get('pnl', 0) > 0)
-                win_rate = (wins / len(trades)) * TradingConstants.PERCENT_MULTIPLIER
-
-            # Max Drawdown
-            rolling_max = returns_df.expanding().max()
-            drawdowns = (returns_df - rolling_max) / rolling_max
-            max_drawdown = drawdowns.min() * TradingConstants.PERCENT_MULTIPLIER
+            # Calculate individual metrics from metrics module
+            tr_raw = _metrics.total_return(portfolio_history, trades)
+            wr_raw = _metrics.win_rate(portfolio_history, trades)
+            mdd_raw = _metrics.max_drawdown(portfolio_history, trades)
+            
+            # Adjust win_rate: metrics.py returns float('-inf') if no trades
+            win_rate = 0.0 if wr_raw == float("-inf") else wr_raw * pct
             
             return {
-                "total_return": float(total_return),
+                "total_return": float(tr_raw * pct),
                 "win_rate": float(win_rate),
                 "num_trades": len(trades),
-                "max_drawdown": float(max_drawdown),
+                "max_drawdown": float(mdd_raw * pct),
             }
-            
+        except ValidationError:
+            raise
         except Exception as e:
             raise ValidationError(f"Error calculating metrics: {str(e)}") from e
 
