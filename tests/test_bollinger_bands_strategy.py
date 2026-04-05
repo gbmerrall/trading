@@ -1,11 +1,5 @@
-import os
-import sys
-
 import pandas as pd
 import pytest
-
-# Add project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtest.strategy import BollingerBandsStrategy
 from backtest.validation import ValidationError
@@ -77,40 +71,39 @@ class TestBollingerBandsStrategy:
             strategy.set_parameters({"std_dev": -1.0})
 
     def test_buy_signal_on_lower_band_touch(self):
-        """Test signals can be generated from price data."""
-        dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        # Create downtrend data
-        prices = list(range(100, 70, -1)) + [70] * 20
+        """Test buy signal fires when price breaks below the lower Bollinger Band.
+
+        A linear downtrend does not trigger this: price tracks the band as it falls.
+        A stable baseline followed by a sharp drop puts price well below the
+        established lower band, generating buy signals.
+        """
+        dates = pd.date_range("2020-01-01", periods=60, freq="D")
+        # 25 stable days establish tight bands, then sharp drop breaks below lower band
+        prices = [100.0] * 25 + [100 - i * 2 for i in range(1, 36)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = BollingerBandsStrategy(period=20, std_dev=2.0)
         signals = strategy.generate_signals(data)
 
-        # Verify signal structure
         assert "buy" in signals.columns
         assert "sell" in signals.columns
         assert len(signals) == len(data)
-        # All signal values should be False or True
-        assert all(isinstance(x, (bool, type(pd.NA))) for x in signals["buy"])
-        assert all(isinstance(x, (bool, type(pd.NA))) for x in signals["sell"])
+        assert signals["buy"].any(), "Expected buy signals when price drops sharply below lower band"
 
     def test_sell_signal_on_upper_band_touch(self):
-        """Test signals maintain correct format across different price patterns."""
-        dates = pd.date_range("2020-01-01", periods=50, freq="D")
-        # Create uptrend data
-        prices = list(range(50, 80)) + [80] * 20
+        """Test sell signal fires when price breaks above the upper Bollinger Band."""
+        dates = pd.date_range("2020-01-01", periods=60, freq="D")
+        # 25 stable days establish tight bands, then sharp rise breaks above upper band
+        prices = [100.0] * 25 + [100 + i * 2 for i in range(1, 36)]
         data = pd.DataFrame({"Close": prices}, index=dates)
 
         strategy = BollingerBandsStrategy(period=20, std_dev=2.0)
         signals = strategy.generate_signals(data)
 
-        # Verify signal structure
         assert "sell" in signals.columns
         assert "buy" in signals.columns
         assert len(signals) == len(data)
-        # Signals should be boolean-like
-        assert signals["buy"].isin([True, False]).all() or signals["buy"].isna().any()
-        assert signals["sell"].isin([True, False]).all() or signals["sell"].isna().any()
+        assert signals["sell"].any(), "Expected sell signals when price rises sharply above upper band"
 
     def test_no_signals_in_warmup_period(self):
         """Test no signals generated during warmup period."""
