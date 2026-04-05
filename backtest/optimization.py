@@ -261,3 +261,60 @@ class WalkForwardOptimizer:
         self.searcher = searcher if searcher is not None else GridSearch()
         self._objective_fn = objective_fn
         self.min_trades = min_trades
+
+    def _run_train_window(self, train_data: pd.DataFrame) -> dict:
+        """Find the best-scoring parameter set for a training window.
+
+        Runs BacktestRunnerImpl for each candidate parameter set, applies
+        warmup filtering, and scores with the objective function. Returns
+        the parameter set with the highest score.
+
+        Args:
+            train_data: Sliced training data with DatetimeIndex.
+
+        Returns:
+            Dict with keys "best_params" (dict) and "objective_score" (float).
+        """
+        from .runner import BacktestRunnerImpl
+
+        candidates = self.searcher.generate(self.param_space)
+        if not candidates:
+            return {"best_params": {}, "objective_score": float("-inf")}
+            
+        best_params = candidates[0]
+        best_score = float("-inf")
+
+        for params in candidates:
+            strategy = self.strategy_class(**params)
+            warmup_n = strategy.warmup_period
+            runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
+
+            try:
+                result = runner.run(data=train_data, start_capital=None)
+            except Exception:
+                continue
+
+            portfolio_history = [
+                {"date": d, "value": v}
+                for d, v in result["strategy_returns"].items()
+            ]
+            trades = result["trades"]
+
+            # Apply warmup buffer
+            if warmup_n > 0 and len(train_data) > warmup_n:
+                cutoff = train_data.index[warmup_n]
+                portfolio_history, trades = _filter_by_warmup(
+                    portfolio_history, trades, cutoff
+                )
+
+            # Apply min_trades guard
+            if len(trades) < self.min_trades:
+                score = float("-inf")
+            else:
+                score = self._objective_fn(portfolio_history, trades)
+
+            if score > best_score:
+                best_score = score
+                best_params = params
+
+        return {"best_params": best_params, "objective_score": best_score}

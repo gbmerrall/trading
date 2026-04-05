@@ -333,3 +333,74 @@ class TestWalkForwardOptimizerInit:
         data = self._make_data()
         opt = WalkForwardOptimizer(**self._valid_kwargs(data))
         assert isinstance(opt.searcher, GridSearch)
+
+
+class TestRunTrainWindow:
+    """Tests for WalkForwardOptimizer._run_train_window."""
+
+    def _make_data(self, n=200):
+        dates = pd.date_range("2020-01-01", periods=n, freq="B")
+        prices = [100.0 + i * 0.5 for i in range(n)]
+        return pd.DataFrame({"Close": prices}, index=dates)
+
+    def _make_optimizer(self, data):
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        return WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2, 3]},
+            data=data,
+            train_size=100,
+            test_size=50,
+            window_type="sliding",
+            min_trades=0,  # don't skip windows with few trades
+        )
+
+    def test_returns_dict_with_best_params_key(self):
+        data = self._make_data()
+        opt = self._make_optimizer(data)
+        train_data = data.iloc[:100]
+        result = opt._run_train_window(train_data)
+        assert "best_params" in result
+
+    def test_best_params_keys_match_param_space(self):
+        data = self._make_data()
+        opt = self._make_optimizer(data)
+        train_data = data.iloc[:100]
+        result = opt._run_train_window(train_data)
+        assert set(result["best_params"].keys()) == {"consecutive_days"}
+
+    def test_best_params_value_is_from_param_space(self):
+        data = self._make_data()
+        opt = self._make_optimizer(data)
+        train_data = data.iloc[:100]
+        result = opt._run_train_window(train_data)
+        assert result["best_params"]["consecutive_days"] in [1, 2, 3]
+
+    def test_returns_objective_score(self):
+        data = self._make_data()
+        opt = self._make_optimizer(data)
+        train_data = data.iloc[:100]
+        result = opt._run_train_window(train_data)
+        assert "objective_score" in result
+        assert isinstance(result["objective_score"], float)
+
+    def test_all_min_trades_filtered_returns_first_params(self):
+        """When every candidate has too few trades, first params set is returned."""
+        data = self._make_data()
+        from backtest.optimization import WalkForwardOptimizer
+        from backtest.strategy import ConsecutiveDaysStrategy
+        opt = WalkForwardOptimizer(
+            strategy_class=ConsecutiveDaysStrategy,
+            param_space={"consecutive_days": [1, 2, 3]},
+            data=data,
+            train_size=100,
+            test_size=50,
+            window_type="sliding",
+            min_trades=9999,  # impossible threshold
+        )
+        train_data = data.iloc[:100]
+        result = opt._run_train_window(train_data)
+        # Should not raise — falls back to first candidate
+        assert "best_params" in result
+        assert result["objective_score"] == float("-inf")
