@@ -14,9 +14,9 @@ class ValidationError(ValueError):
 
 
 def validate_dataframe(
-    data: pd.DataFrame, 
-    required_columns: list[str] = None,
-    min_rows: int = None,
+    data: pd.DataFrame,
+    required_columns: Optional[list[str]] = None,
+    min_rows: Optional[int] = None,
     allow_empty: bool = False
 ) -> None:
     """
@@ -184,7 +184,7 @@ def validate_string_choice(
     return comparison_value
 
 
-def sanitize_file_path(file_path: str, allowed_extensions: list[str] = None) -> str:
+def sanitize_file_path(file_path: str, allowed_extensions: Optional[list[str]] = None) -> str:
     """
     Sanitize and validate a file path for security.
     

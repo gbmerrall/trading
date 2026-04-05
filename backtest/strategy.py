@@ -1419,11 +1419,9 @@ class MeanReversionStrategy(BaseStrategy):
         validate_integer(self.rsi_period, "rsi_period", min_value=1)
         validate_integer(self.bb_period, "bb_period", min_value=1)
         validate_positive_number(self.bb_std, "bb_std")
+        validate_integer(self.rsi_lower, "rsi_lower", min_value=0, max_value=100)
+        validate_integer(self.rsi_upper, "rsi_upper", min_value=0, max_value=100)
 
-        if not 0 <= self.rsi_lower <= 100:
-            raise ValidationError("rsi_lower must be between 0 and 100")
-        if not 0 <= self.rsi_upper <= 100:
-            raise ValidationError("rsi_upper must be between 0 and 100")
         if self.rsi_lower >= self.rsi_upper:
             raise ValidationError("rsi_lower must be less than rsi_upper")
 
