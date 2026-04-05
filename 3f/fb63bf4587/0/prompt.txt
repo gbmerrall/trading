@@ -58,3 +58,10 @@ seems fine. proceed
 ---
 
 yes please
+
+---
+
+The spec states: "The method signature and return dict keys are unchanged; existing tests pass without modification."
+  Currently, tests/test_runner.py asserts the existence of exactly four keys: total_return, win_rate, num_trades, and max_drawdown. When we refactor
+  runner._calculate_metrics() to call metrics.py, we must ensure it still returns exactly that dictionary structure, rather than dumping all 10 metrics into the
+  standard backtest result (which could break downstream consumers or tests).
