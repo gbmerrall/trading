@@ -119,11 +119,12 @@ def validate_positive_number(
     if np.isnan(value) or np.isinf(value):
         raise ValidationError(f"{name} cannot be NaN or infinite")
     
-    min_value = 0 if allow_zero else 0
-    comparison = ">=" if allow_zero else ">"
-    
-    if not (value > min_value if not allow_zero else value >= min_value):
-        raise ValidationError(f"{name} must be {comparison} {min_value}, got {value}")
+    if allow_zero:
+        if value < 0:
+            raise ValidationError(f"{name} must be >= 0, got {value}")
+    else:
+        if value <= 0:
+            raise ValidationError(f"{name} must be > 0, got {value}")
     
     if max_value is not None and value > max_value:
         raise ValidationError(f"{name} must be <= {max_value}, got {value}")
