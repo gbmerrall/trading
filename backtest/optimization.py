@@ -90,3 +90,49 @@ class RandomSearch:
         if self.n >= len(all_combos):
             return rng.choices(all_combos, k=self.n)
         return rng.sample(all_combos, k=self.n)
+
+
+def _generate_windows(
+    data: pd.DataFrame,
+    train_size: int,
+    test_size: int,
+    window_type: str,
+) -> list[tuple[pd.DataFrame, pd.DataFrame]]:
+    """Split data into (train, test) window pairs.
+
+    Args:
+        data: Full dataset with DatetimeIndex.
+        train_size: Number of bars in each training window (sliding mode) or
+                    in the initial training window (anchored mode).
+        test_size: Number of bars in each test window.
+        window_type: "sliding" — fixed train size, both windows advance by test_size.
+                     "anchored" — train always starts at index 0, expands each step.
+
+    Returns:
+        List of (train_df, test_df) tuples in chronological order.
+
+    Raises:
+        ValidationError: If window_type is not "sliding" or "anchored".
+    """
+    if window_type not in ("sliding", "anchored"):
+        raise ValidationError(
+            f"window_type must be 'sliding' or 'anchored', got '{window_type}'"
+        )
+
+    n = len(data)
+    windows = []
+    test_start = train_size
+
+    while test_start + test_size <= n:
+        test_end = test_start + test_size
+        test_df = data.iloc[test_start:test_end]
+
+        if window_type == "sliding":
+            train_df = data.iloc[test_start - train_size:test_start]
+        else:  # anchored
+            train_df = data.iloc[0:test_start]
+
+        windows.append((train_df, test_df))
+        test_start += test_size
+
+    return windows
