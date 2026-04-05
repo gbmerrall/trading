@@ -63,16 +63,18 @@ class PortfolioConfig:
 
 @dataclass
 class StrategyConfig:
-    """Configuration for trading strategies."""
-    
-    # Strategy parameters
+    """Configuration for ConsecutiveDaysStrategy.
+
+    Most strategies manage their own parameters directly via constructor arguments.
+    This config class exists specifically for ConsecutiveDaysStrategy, which reads
+    consecutive_days from the global config. Other strategy parameters are intentionally
+    not included here — adding them would require updating each strategy to read from
+    config, which is not the current design.
+    """
+
     consecutive_days: int = 3
-    
-    # Signal generation
     require_minimum_data: bool = True
     minimum_data_points: int = ValidationLimits.MIN_CONSECUTIVE_DAYS
-    
-    # Position sizing
     use_full_capital: bool = True
     position_size_method: str = 'fixed_dollar'  # 'fixed_dollar', 'fixed_shares', 'percentage'
     
