@@ -1479,9 +1479,20 @@ class MeanReversionStrategy(BaseStrategy):
         Raises:
             ValidationError: If new parameters are invalid
         """
-        for key, value in params.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
+        valid_keys = {"rsi_period", "rsi_lower", "rsi_upper", "bb_period", "bb_std"}
+        for key in params:
+            if key not in valid_keys:
+                raise ValidationError(f"Unknown parameter: {key}")
+        if "rsi_period" in params:
+            self.rsi_period = params["rsi_period"]
+        if "rsi_lower" in params:
+            self.rsi_lower = params["rsi_lower"]
+        if "rsi_upper" in params:
+            self.rsi_upper = params["rsi_upper"]
+        if "bb_period" in params:
+            self.bb_period = params["bb_period"]
+        if "bb_std" in params:
+            self.bb_std = params["bb_std"]
         self._validate_parameters()
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -1592,9 +1603,14 @@ class MomentumStrategy(BaseStrategy):
         Raises:
             ValidationError: If new parameters are invalid
         """
-        for key, value in params.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
+        valid_keys = {"roc_period", "roc_threshold"}
+        for key in params:
+            if key not in valid_keys:
+                raise ValidationError(f"Unknown parameter: {key}")
+        if "roc_period" in params:
+            self.roc_period = params["roc_period"]
+        if "roc_threshold" in params:
+            self.roc_threshold = params["roc_threshold"]
         self._validate_parameters()
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -1704,9 +1720,16 @@ class VolatilityStrategy(BaseStrategy):
         Raises:
             ValidationError: If new parameters are invalid
         """
-        for key, value in params.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
+        valid_keys = {"atr_period", "atr_multiplier", "breakout_period"}
+        for key in params:
+            if key not in valid_keys:
+                raise ValidationError(f"Unknown parameter: {key}")
+        if "atr_period" in params:
+            self.atr_period = params["atr_period"]
+        if "atr_multiplier" in params:
+            self.atr_multiplier = params["atr_multiplier"]
+        if "breakout_period" in params:
+            self.breakout_period = params["breakout_period"]
         self._validate_parameters()
 
     def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
