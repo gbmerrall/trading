@@ -13,11 +13,6 @@ class ValidationError(ValueError):
     pass
 
 
-def _get_validation_limits():
-    """Get validation limits and trading constants."""
-    return ValidationLimits, TradingConstants
-
-
 def validate_dataframe(
     data: pd.DataFrame, 
     required_columns: list[str] = None,
@@ -43,7 +38,6 @@ def validate_dataframe(
         raise ValidationError("DataFrame cannot be empty")
     
     if min_rows is None:
-        ValidationLimits, _ = _get_validation_limits()
         min_rows = ValidationLimits.MIN_DATA_POINTS
     
     if len(data) < min_rows:
@@ -84,7 +78,6 @@ def validate_price_data(data: pd.DataFrame, column: str = 'Close') -> None:
         raise ValidationError(f"'{column}' column contains non-positive values")
     
     # Check for extreme values that might indicate data errors
-    ValidationLimits, _ = _get_validation_limits()
     max_variation = ValidationLimits.MAX_PRICE_VARIATION_RATIO
     
     if non_null_prices.max() / non_null_prices.min() > max_variation:
