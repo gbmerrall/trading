@@ -137,7 +137,34 @@ def _build_comparison_table(
 
 def _build_wfa_table(wfa_result: Any) -> str:
     """Build the WFA per-window HTML table fragment."""
-    raise NotImplementedError
+    rows = []
+    for _, row in wfa_result.windows.iterrows():
+        param_str = " ".join(f"{k}={v}" for k, v in row["best_params"].items())
+        test_range = f"{row['test_start'].date()} &rarr; {row['test_end'].date()}"
+        sharpe = f"{row['sharpe_ratio']:.2f}" if isinstance(row["sharpe_ratio"], float) else "n/a"
+        ret = row["total_return"]
+        ret_str = f"{ret * 100:+.1f}%" if isinstance(ret, float) else "n/a"
+        ret_class = "positive" if isinstance(ret, float) and ret >= 0 else "negative"
+        rows.append(
+            f"<tr>"
+            f"<td>{test_range}</td>"
+            f"<td><code>{param_str}</code></td>"
+            f"<td>{sharpe}</td>"
+            f'<td class="{ret_class}">{ret_str}</td>'
+            f"<td>{int(row['n_trades'])}</td>"
+            f"</tr>"
+        )
+
+    body = "\n".join(rows)
+    return (
+        "<table>"
+        "<thead><tr>"
+        "<th>Test Period</th><th>Best Params</th><th>Sharpe</th>"
+        "<th>Return</th><th>Trades</th>"
+        "</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        "</table>"
+    )
 
 
 def generate_report(data: ReportData, output_path: str = "output/report.html") -> None:
