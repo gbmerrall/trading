@@ -1,0 +1,29 @@
+Can you tweak @bhp_analysis.py to save the chart out and also include all the strategies. It's just charting buy&hold and I think DCA
+
+---
+
+The python code outputs a couple text tables plus the charts. I don't think the text tables show in the charts. WHat's the best way to roll all the analysis results up into a nice little package. I'm not wedded to plotly. I'm more interested in finding a way to have all the results out in away that is easy to understand and analyse
+
+---
+
+yes please
+
+---
+
+after a run
+
+---
+
+Option A is the right approach for me
+
+---
+
+great
+
+---
+
+yep!
+
+---
+
+you can proceed to implementation plan and then so straight to implementation
