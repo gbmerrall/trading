@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "a7765ca19219",
+  "session_id": "3a1320d5-5619-4323-b2bd-888780c31fbd",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-22T01:42:22.994992Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "354ebd4c0b76",
+  "token_usage": {
+    "input_tokens": 164,
+    "cache_creation_tokens": 60050,
+    "cache_read_tokens": 681883,
+    "output_tokens": 26938,
+    "api_call_count": 18
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 7367,
+      "user_lines_removed": 0,
+      "agent_lines_added": 318,
+      "agent_lines_removed": 5,
+      "user_added_per_file": {
+        ".python-version": 1,
+        "TODO.md": 8,
+        "backtest_combined.txt": 5032,
+        "docs/superpowers/plans/2026-04-05-walk-forward-analysis.md": 2326
+      }
+    }
+  ]
+}
