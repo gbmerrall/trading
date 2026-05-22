@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "5977a3d5662e",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "bhp_analysis.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/59/77a3d5662e/0/metadata.json",
+      "transcript": "/59/77a3d5662e/0/full.jsonl",
+      "content_hash": "/59/77a3d5662e/0/content_hash.txt",
+      "prompt": "/59/77a3d5662e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 205,
+    "cache_creation_tokens": 81566,
+    "cache_read_tokens": 3747372,
+    "output_tokens": 40459,
+    "api_call_count": 55
+  }
+}
