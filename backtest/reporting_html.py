@@ -83,7 +83,56 @@ def _build_comparison_table(
     dca_returns: pd.Series,
 ) -> str:
     """Build the strategy comparison HTML table fragment."""
-    raise NotImplementedError
+    rows = []
+    for rank, (name, metrics, returns) in enumerate(results, start=1):
+        ret = metrics["total_return"]
+        ret_class = "positive" if ret >= 0 else "negative"
+        start_dt = returns.index[0].strftime("%Y-%m-%d") if len(returns) else "N/A"
+        end_dt = returns.index[-1].strftime("%Y-%m-%d") if len(returns) else "N/A"
+        rows.append(
+            f"<tr>"
+            f"<td>{rank}</td>"
+            f"<td>{name}</td>"
+            f"<td>{start_dt}</td>"
+            f"<td>{end_dt}</td>"
+            f'<td class="{ret_class}">{ret:+.1f}%</td>'
+            f"<td>{metrics['max_drawdown']:.1f}%</td>"
+            f"<td>{metrics['win_rate']:.1f}%</td>"
+            f"<td>{metrics['num_trades']}</td>"
+            f"</tr>"
+        )
+
+    for label, metrics, returns in [
+        ("Buy & Hold", bh_metrics, bh_returns),
+        ("DCA (monthly)", dca_metrics, dca_returns),
+    ]:
+        ret = metrics["total_return"]
+        ret_class = "positive" if ret >= 0 else "negative"
+        start_dt = returns.index[0].strftime("%Y-%m-%d") if len(returns) else "N/A"
+        end_dt = returns.index[-1].strftime("%Y-%m-%d") if len(returns) else "N/A"
+        rows.append(
+            f'<tr class="benchmark-row">'
+            f"<td>&#8212;</td>"
+            f"<td>{label}</td>"
+            f"<td>{start_dt}</td>"
+            f"<td>{end_dt}</td>"
+            f'<td class="{ret_class}">{ret:+.1f}%</td>'
+            f"<td>{metrics['max_drawdown']:.1f}%</td>"
+            f"<td>n/a</td>"
+            f"<td>n/a</td>"
+            f"</tr>"
+        )
+
+    body = "\n".join(rows)
+    return (
+        "<table>"
+        "<thead><tr>"
+        "<th>Rank</th><th>Strategy</th><th>Start</th><th>End</th>"
+        "<th>Return</th><th>Max Drawdown</th><th>Win%</th><th>Trades</th>"
+        "</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        "</table>"
+    )
 
 
 def _build_wfa_table(wfa_result: Any) -> str:
