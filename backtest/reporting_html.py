@@ -169,4 +169,67 @@ def _build_wfa_table(wfa_result: Any) -> str:
 
 def generate_report(data: ReportData, output_path: str = "output/report.html") -> None:
     """Assemble all analysis results into a self-contained HTML report and write to disk."""
-    raise NotImplementedError
+    run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    comparison_table = _build_comparison_table(
+        data.results, data.bh_metrics, data.bh_returns, data.dca_metrics, data.dca_returns
+    )
+    chart_comparison = data.fig_comparison.to_html(
+        full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
+    )
+
+    if data.wfa_result is not None:
+        wfa_table = _build_wfa_table(data.wfa_result)
+        s = data.wfa_result.summary
+        ret = s["total_return"] * 100
+        ret_class = "positive" if ret >= 0 else "negative"
+        wfa_section = (
+            f"<h2>Walk-Forward Analysis: {data.wfa_label}</h2>"
+            f"{wfa_table}"
+            f'<div class="summary-block">'
+            f'Sharpe ratio &nbsp; {s["sharpe_ratio"]:.2f}<br>'
+            f'Total return &nbsp; <span class="{ret_class}">{ret:+.1f}%</span><br>'
+            f'Max drawdown &nbsp; {s["max_drawdown"] * 100:.1f}%<br>'
+            f'Win rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {s["win_rate"] * 100:.1f}%<br>'
+            f'Windows &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {s["n_windows"]} ({s["n_windows_with_trades"]} with trades)<br>'
+            f'Best params &nbsp;&nbsp; {data.wfa_result.best_params_overall}'
+            f"</div>"
+        )
+        if data.fig_wfa_equity is not None:
+            wfa_section += data.fig_wfa_equity.to_html(
+                full_html=False, include_plotlyjs=False, config={"displayModeBar": False}
+            )
+        if data.fig_wfa_params is not None:
+            wfa_section += data.fig_wfa_params.to_html(
+                full_html=False, include_plotlyjs=False, config={"displayModeBar": False}
+            )
+    else:
+        wfa_section = "<h2>Walk-Forward Analysis</h2><p>No WFA configured.</p>"
+
+    html = (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '<meta charset="UTF-8">\n'
+        f"<title>{data.ticker} Trading Analysis</title>\n"
+        f"<style>{_CSS}</style>\n"
+        "</head>\n"
+        "<body>\n"
+        f"<h1>{data.ticker} Trading Analysis</h1>\n"
+        f'<p class="meta">{data.start_date} to {data.end_date}'
+        f" &nbsp;|&nbsp; Starting capital: ${data.start_capital:,.0f}"
+        f" &nbsp;|&nbsp; Run: {run_time}</p>\n"
+        "<h2>Strategy Comparison</h2>\n"
+        f"{comparison_table}\n"
+        f"{chart_comparison}\n"
+        f"{wfa_section}\n"
+        "</body>\n"
+        "</html>"
+    )
+
+    parent = os.path.dirname(output_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as fh:
+        fh.write(html)
+    print(f"Report saved to {output_path}")
