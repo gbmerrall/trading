@@ -4,15 +4,16 @@
 **Status:** Spec (no implementation in this repo)
 **Target repo:** new — `trading-pipeline/`
 **Depends on:** the existing `backtest` package in this repo (consumed as a path/git dependency)
+**Deployment context:** single-user, runs on the author's home network via cron.
 
 ## 1. Purpose
 
-A daily, automated pipeline that turns the research framework in this repo into an
-operational decision support tool. After each market close (or before the next open)
-it produces a single advisory recommendation for one pre-approved
+A daily, automated pipeline that turns the research framework in this repo into
+an operational decision support tool. After each market close (or before the
+next open) it produces a single advisory recommendation for one pre-approved
 (ticker, strategy) pair, persists the run, and pushes a notification to a
-self-hosted ntfy.sh topic. There is no broker integration — the human
-executes manually.
+self-hosted ntfy.sh topic. There is no broker integration — the human executes
+manually.
 
 ## 2. Scope (v1)
 
@@ -20,13 +21,13 @@ executes manually.
   (technical → research → arbiter), SQLite run log, ntfy notification, cron
   triggered CLI.
 - **Out of scope:** multi-ticker fan-out, strategy selection at runtime, broker
-  routing, paper/live mode toggle, position sizing, stop/target computation
-  (strategy-defined exits only), backtest replay of recommendations.
+  routing, position sizing, computed stop/target (strategy-defined exits only),
+  historical performance attribution.
 
 ## 3. Architecture
 
-Single agno **Workflow** invoked by an external cron / systemd timer through a
-CLI entrypoint. Three steps run sequentially with typed Pydantic payloads:
+Single agno **Workflow** invoked by cron through a CLI entrypoint. Three steps
+run sequentially with typed Pydantic payloads:
 
 ```
 cron ──► CLI ──► Workflow
@@ -38,9 +39,8 @@ cron ──► CLI ──► Workflow
                                   └─► ntfy publish
 ```
 
-Rationale for agno Workflow over Team: this is a deterministic sequential
-pipeline, not collaborative reasoning. Workflow gives typed step composition
-without inter-agent chatter. Per agno docs, agents chain via
+Agno Workflow (not Team): this is a deterministic sequential pipeline, not
+collaborative reasoning. Per agno docs, agents chain via
 `result = agent.run(input=...).content` with `output_schema=PydanticModel`.
 
 ## 4. Components
@@ -49,73 +49,68 @@ without inter-agent chatter. Per agno docs, agents chain via
 
 Pure function. No LLM.
 
-- Inputs: ticker (str), strategy descriptor from config.
+- Inputs: ticker, strategy descriptor from config.
 - Downloads ~60 trading days via `yfinance.download(auto_adjust=True)` and
-  flattens any multi-level columns (same helper as `trade_analysis.py`).
+  flattens any multi-level columns.
 - Imports the configured strategy class from the existing `backtest` package
-  (added as a `tool.uv.sources` path or git dep in `pyproject.toml`).
+  (added as a path or git dep in `pyproject.toml` via `[tool.uv.sources]`).
 - Constructs the strategy with `strategy_params`, calls `generate_signals(data)`,
-  reads the **last row** to determine action.
+  reads the last row to determine action.
 - Warmup guard: if `len(data) < strategy.warmup_period`, force `HOLD` and set
   `warmup_ok=False`.
-- Returns a `TechnicalSignal` (see §5).
+- Returns a `TechnicalSignal` (§5).
 - `invalidation_price`: the strategy's natural exit reference when available
   (e.g., recent swing low for breakout). May be `None`; arbiter does not invent one.
 
 ### 4.2 Research Agent — `pipeline/research.py`
 
 `agno.agent.Agent` with `model=Gemini(id="gemini-3.1-flash-lite")` and
-`output_schema=ResearchReport`. Tools registered via `@tool`:
+`output_schema=ResearchReport`. Two tools registered via `@tool`:
 
 - `get_company_news(symbol, since_iso)` — wraps
-  `finnhub.Client.company_news(symbol, _from=..., to=...)`. Returns
-  `[{headline, url, datetime, source, summary}, ...]` truncated to
-  `research.max_headlines`.
+  `finnhub.Client.company_news(...)`. Returns up to `research.max_headlines`.
 - `get_earnings_calendar(symbol, window_days)` — wraps
-  `finnhub.Client.earnings_calendar(_from, to, symbol=...)`. Returns the next
-  upcoming earnings date within window or `None`.
+  `finnhub.Client.earnings_calendar(...)`. Returns the next upcoming earnings
+  date within window or `None`.
 
 Agent instructions:
-1. Call `get_company_news` for the configured `news_lookback_hours`.
-2. For each headline, classify `pos|neu|neg` with a confidence in [0, 1].
-3. Call `get_earnings_calendar` for `±earnings_window_days`.
-4. Emit a `ResearchReport` matching the schema; one-sentence rationale.
+1. Fetch news for the configured `news_lookback_hours`.
+2. Classify each headline `pos|neu|neg` with confidence in [0, 1].
+3. Fetch earnings calendar for `±earnings_window_days`.
+4. Emit a `ResearchReport` matching the schema with a one-sentence rationale.
 
-**Regime post-processing (deterministic, applied after the agent returns):**
+**Regime mapping (deterministic, applied after the agent returns) — kept out
+of the LLM so the rule is auditable from the SQLite log:**
 
 ```
 if earnings_in_window:                regime = RED
 elif sentiment_score < -0.4:          regime = RED
 elif sentiment_score < -0.1:          regime = YELLOW
+elif headline_count == 0:             regime = YELLOW   # insufficient context
 else:                                  regime = GREEN
 ```
 
 `sentiment_score = mean(sign(sentiment) * confidence)` over scored headlines,
-in [-1, 1]. If `headline_count == 0`, treat as `YELLOW` (insufficient context).
-
-Keeping the regime mapping out of the LLM ensures reproducibility and makes the
-rule auditable from the SQLite log.
+range [-1, 1].
 
 ### 4.3 Arbiter — `pipeline/arbiter.py`
 
 Pure function over `(TechnicalSignal, ResearchReport)`. Decision table:
 
-| Technical | Regime  | Decision            |
-|-----------|---------|---------------------|
-| BUY       | GREEN   | RECOMMEND_BUY       |
-| BUY       | YELLOW  | BUY_WITH_CAUTION    |
-| BUY       | RED     | STAND_DOWN          |
-| SELL      | *any*   | RECOMMEND_EXIT      |
-| HOLD      | *any*   | NO_ACTION           |
-| *any*     | *any*   | NO_ACTION (if `warmup_ok=False`) |
+| Technical | Regime | Decision           |
+|-----------|--------|--------------------|
+| BUY       | GREEN  | RECOMMEND_BUY      |
+| BUY       | YELLOW | BUY_WITH_CAUTION   |
+| BUY       | RED    | STAND_DOWN         |
+| SELL      | *any*  | RECOMMEND_EXIT     |
+| HOLD      | *any*  | NO_ACTION          |
+| *any*     | *any*  | NO_ACTION (if `warmup_ok=False`) |
 
 Exit signals always honored — never blocked by regime (an open position should
 be closed when the strategy says so regardless of news context).
 
-After deciding, one Gemini 3.5 Flash call generates `summary` (3–4 sentences,
-plain prose) from the structured `TradeRecommendation`. On LLM failure the
-summary falls back to a deterministic template: `"{decision} {ticker} @ {close}.
-Strategy: {strategy_name} {strategy_params}. Regime: {regime} ({rationale})."`.
+After deciding, one Gemini 3.5 Flash call generates `summary` (3–4 sentences)
+from the structured recommendation.
 
 ## 5. Data Contracts
 
@@ -137,21 +132,20 @@ class Headline(BaseModel):
     url: str
     published_at: datetime
     sentiment: Literal["pos", "neu", "neg"]
-    confidence: float  # 0..1
+    confidence: float
 
 class ResearchReport(BaseModel):
     ticker: str
     as_of: date
     regime: Literal["GREEN", "YELLOW", "RED"]
-    sentiment_score: float          # -1..1
+    sentiment_score: float
     headline_count: int
     earnings_in_window: bool
     next_earnings_date: date | None
-    top_headlines: list[Headline]   # up to max_headlines
+    top_headlines: list[Headline]
     rationale: str
 
 class TradeRecommendation(BaseModel):
-    run_id: UUID
     ticker: str
     as_of: date
     decision: Literal[
@@ -165,33 +159,28 @@ class TradeRecommendation(BaseModel):
 
 ## 6. Persistence — `pipeline/persistence.py`
 
-Single-file SQLite (`runs.db`), stdlib `sqlite3`, no ORM. Append/upsert:
+Single-file SQLite (`runs.db`), stdlib `sqlite3`, no ORM. Single table:
 
 ```sql
 CREATE TABLE IF NOT EXISTS runs (
-  id INTEGER PRIMARY KEY,
-  run_id TEXT NOT NULL UNIQUE,
   ticker TEXT NOT NULL,
   as_of DATE NOT NULL,
   ran_at TIMESTAMP NOT NULL,
+  decision TEXT NOT NULL,
   technical_action TEXT NOT NULL,
   technical_close REAL NOT NULL,
-  strategy_name TEXT NOT NULL,
-  strategy_params_json TEXT NOT NULL,
   regime TEXT NOT NULL,
   sentiment_score REAL NOT NULL,
   earnings_in_window INTEGER NOT NULL,
-  decision TEXT NOT NULL,
   summary TEXT NOT NULL,
-  payload_json TEXT NOT NULL          -- full TradeRecommendation as JSON
+  payload_json TEXT NOT NULL,        -- full TradeRecommendation as JSON
+  PRIMARY KEY (ticker, as_of)
 );
-CREATE INDEX IF NOT EXISTS idx_runs_ticker_asof ON runs(ticker, as_of);
 ```
 
-Idempotency: natural key is `(ticker, as_of)`. Re-running the same trading day
-replaces the row (`INSERT ... ON CONFLICT(ticker, as_of) DO UPDATE`).
-Implementation note: enforce the natural key via a `UNIQUE(ticker, as_of)`
-constraint in addition to the `run_id` unique constraint.
+Re-running the same trading day overwrites the row via `INSERT OR REPLACE`.
+`payload_json` is the source of truth; the flat columns exist for quick `SELECT`
+inspection from the sqlite CLI.
 
 ## 7. Notification — `pipeline/notify.py`
 
@@ -199,24 +188,19 @@ Single `publish(rec: TradeRecommendation) -> None`. POSTs to the configured
 ntfy topic via `pyreqwest`.
 
 - **Title:** `{decision} {ticker}`
-- **Body:** `summary` followed by a key-facts block:
+- **Body:** `summary` followed by:
   ```
   Close: {close}
   Strategy: {strategy_name} {strategy_params}
   Regime: {regime} (sentiment={sentiment_score:+.2f}, {headline_count} headlines)
-  {Earnings: {next_earnings_date} if earnings_in_window}
-  {Invalidation: {invalidation_price} if present}
+  {Earnings: {next_earnings_date}  — if earnings_in_window}
+  {Invalidation: {invalidation_price}  — if present}
   ```
-- **Tags** (ntfy emoji shortcodes):
-  - `RECOMMEND_BUY` → `green_circle`
-  - `BUY_WITH_CAUTION` → `warning`
-  - `RECOMMEND_EXIT` → `red_circle`
-  - `STAND_DOWN` → `no_entry`
-  - `NO_ACTION` → `zzz`
-- **Priority:** default; `RECOMMEND_BUY` / `RECOMMEND_EXIT` use `high`.
-- Auth: optional bearer token from `NTFY_TOKEN`.
+- **Tags:** `green_circle` (BUY), `warning` (BUY_WITH_CAUTION),
+  `red_circle` (EXIT), `no_entry` (STAND_DOWN), `zzz` (NO_ACTION).
 
-Always fires — even on pipeline failure rows — so silent failures are visible.
+Home-network ntfy → no auth header needed by default. If the topic is
+protected, set `NTFY_TOKEN` and the publisher adds a bearer header.
 
 ## 8. Configuration
 
@@ -243,68 +227,61 @@ sentiment_model = "gemini-3.1-flash-lite"
 summary_model   = "gemini-3.5-flash"
 
 [notify]
-ntfy_url = "https://ntfy.example.com/trading"
+ntfy_url = "https://ntfy.home.lan/trading"
 
 [paths]
 db_path = "runs.db"
 ```
 
-Secrets via environment only — never in `config.toml`:
-- `FINNHUB_API_KEY`
-- `GOOGLE_API_KEY`
-- `NTFY_TOKEN` (optional)
-
-Config is loaded once at CLI startup into a frozen `PipelineConfig` dataclass
-and passed explicitly into each step (no globals).
+Secrets via environment only: `FINNHUB_API_KEY`, `GOOGLE_API_KEY`, optional
+`NTFY_TOKEN`. Loaded once into a frozen `PipelineConfig` dataclass and passed
+explicitly through the steps (no globals).
 
 ## 9. CLI & Scheduling
 
 Entrypoint: `uv run python -m pipeline.daily [TICKER]`. If `TICKER` is omitted,
-falls back to `config.ticker.symbol`. Exit codes:
+falls back to `config.ticker.symbol`.
 
-- `0` — pipeline ran end to end (regardless of decision)
-- `1` — unrecoverable error before/while persisting (notification still attempted)
-
-Scheduling lives outside the code (systemd timer or cron). Example crontab:
+Cron — runs weekdays after US close (adjust TZ on the host):
 
 ```
 30 21 * * 1-5  cd /opt/trading-pipeline && /usr/local/bin/uv run python -m pipeline.daily >> logs/daily.log 2>&1
 ```
 
-## 10. Errors & Resilience
+## 10. Errors
 
-| Failure                          | Behavior                                                                 |
-|----------------------------------|--------------------------------------------------------------------------|
-| yfinance download error          | One retry (5s backoff). On second failure: log, persist `NO_ACTION` row with failure summary, notify, exit 1. |
-| Strategy raises during signals   | Same as above.                                                           |
-| Finnhub error (news/calendar)    | One retry. On second failure: continue with `headline_count=0` / `next_earnings_date=None`; regime becomes YELLOW. |
-| Per-headline sentiment LLM error | Score that headline as `neu` / 0.0; pipeline continues.                  |
-| Summary LLM error                | Fall back to deterministic template summary.                             |
-| SQLite write error               | Log; still attempt ntfy publish so the user sees the run; exit 1.        |
-| ntfy publish error               | Log; do not retry; SQLite write is the source of truth.                  |
+Fail-fast, no retries — this is a single-user advisory tool on cron; if a
+component is down the simplest signal is no message and a log line.
 
-All logging via `loguru` with `{extra}` enabled per CLAUDE.md, structured kwargs
-for `ticker`, `as_of`, `decision`, `step`.
+| Failure                          | Behavior                                                     |
+|----------------------------------|--------------------------------------------------------------|
+| yfinance / Finnhub network error | Log and exit non-zero. No row written, no ntfy.              |
+| Per-headline sentiment LLM error | Score that headline as `neu` / 0.0; pipeline continues.      |
+| Summary LLM error                | Fall back to deterministic template summary.                 |
+| SQLite write error               | Log and exit; do not publish ntfy (it would be a lie).       |
+| ntfy publish error               | Log; SQLite write is the source of truth.                    |
+
+Logging via `loguru` with `{extra}` in the format string per CLAUDE.md;
+structured kwargs for `ticker`, `as_of`, `decision`, `step`. Cron captures
+stdout/stderr into `logs/daily.log`.
 
 ## 11. Testing
 
 `pytest`, target ≥75% coverage. No live network in any test.
 
 - `tests/test_technical.py` — synthetic OHLC fixtures; verify action extraction
-  per strategy, warmup guard, last-bar selection, `invalidation_price` when present.
-- `tests/test_research.py` — Finnhub tool callables monkeypatched; agent `.run()`
-  patched to return canned JSON; verify the deterministic regime mapping
-  (earnings flag, score thresholds, empty-headlines → YELLOW).
-- `tests/test_arbiter.py` — table-driven over every (action × regime) combo and
-  the `warmup_ok=False` short-circuit; assert decision string and that exit
-  signals bypass regime.
-- `tests/test_persistence.py` — round-trip a `TradeRecommendation`; rerun same
-  `(ticker, as_of)` and assert single row with updated content.
-- `tests/test_notify.py` — `pyreqwest` POST mocked; assert title, body lines,
-  tags, and priority per decision.
-- `tests/test_workflow_smoke.py` — end-to-end with every external dependency
-  mocked; one happy path (`BUY + GREEN`) and one failure injection (Finnhub
-  down → YELLOW).
+  per strategy, warmup guard, last-bar selection, `invalidation_price` when
+  the strategy exposes one.
+- `tests/test_research.py` — Finnhub tool callables monkeypatched; agent
+  `.run()` patched to return canned JSON; assert the deterministic regime
+  mapping (earnings flag, score thresholds, empty-headlines → YELLOW).
+- `tests/test_arbiter.py` — table-driven over every (action × regime) combo
+  and the `warmup_ok=False` short-circuit; assert decision and that exits
+  bypass regime.
+- `tests/test_persistence.py` — round-trip a `TradeRecommendation`; rerun
+  same `(ticker, as_of)` and assert single row with updated content.
+- `tests/test_notify.py` — `pyreqwest` POST mocked; assert title, body, tags.
+- `tests/test_workflow_smoke.py` — end-to-end with all external calls mocked.
 
 ## 12. Repo Layout
 
@@ -323,42 +300,27 @@ trading-pipeline/
 │   ├── technical.py            # Technical Engine
 │   ├── research.py             # Research Agent + Finnhub tools
 │   ├── arbiter.py              # Arbiter + summary LLM call
-│   ├── persistence.py          # SQLite append/upsert
+│   ├── persistence.py          # SQLite upsert
 │   └── notify.py               # ntfy publish
 └── tests/
-    ├── conftest.py
-    ├── fixtures/
-    ├── test_technical.py
-    ├── test_research.py
-    ├── test_arbiter.py
-    ├── test_persistence.py
-    ├── test_notify.py
-    └── test_workflow_smoke.py
 ```
 
 ## 13. Dependencies (`pyproject.toml` — `[project]` only, no build-system)
 
 - `agno`
-- `google-genai` (Gemini)
+- `google-genai`
 - `finnhub-python`
 - `pyreqwest`
 - `pydantic >=2`
 - `loguru`
 - `yfinance`
-- `pandas`, `numpy` (transitive via backtest)
 - `backtest` — path or git source via `[tool.uv.sources]`, pinned to a commit
 
 Dev: `pytest`, `pytest-cov`, `ruff`, `ty`.
 
-## 14. Open Questions / Deferred
+## 14. Deferred
 
-- **Multi-strategy voting on the same ticker** — deferred to v2; current design
-  picks one pre-approved strategy from config.
-- **Watchlist fan-out** — deferred; v1 runs per `uv run python -m pipeline.daily TICKER`
-  invocation, so cron can list multiple tickers as separate jobs.
-- **Performance attribution** — the SQLite schema records enough to compute
-  hindsight P&L by joining future closes to each recommendation, but the
-  attribution job itself is out of scope.
-- **Position sizing / stops** — deferred; current design relies on
-  strategy-defined exits plus an optional `invalidation_price` for the human's
-  reference.
+- Multi-strategy voting on the same ticker.
+- Watchlist fan-out (v1 = one cron line per ticker if needed).
+- Hindsight P&L attribution job (schema already supports it).
+- Computed stops/targets/sizing.
