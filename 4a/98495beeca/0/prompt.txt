@@ -29,3 +29,7 @@ This is the master script that reads the outputs from both engines and makes the
 ---
 
 keep going and produce the spec file
+
+---
+
+This will be running just for me on my home network which may assist you in simplifying the spec
