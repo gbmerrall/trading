@@ -25,3 +25,7 @@ This is the master script that reads the outputs from both engines and makes the
 
 * If the Technical Engine says `BUY` and the Fundamental Agent says `GREEN`, the Arbiter generates the official trade recommendation.
 * It can then format this recommendation into a clean summary (Entry Price, Stop Loss, Target) and send it to you via email/Discord/Telegram, or—eventually—route it directly to Tastytrade for live execution.
+
+---
+
+keep going and produce the spec file
