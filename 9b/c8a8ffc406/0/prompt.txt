@@ -1,0 +1,35 @@
+I've done a lot of work building out a algo trading framework. The result is in @trade_analysis.py. I'd now like to build this into a pipeline of agents. I'd like you to create a spec only to assist with the design. It won't be built in this repo. I'll use the agno agent framework. You have context7 to help you lookup docs. 
+
+Requirements:
+
+### The Daily Production Architecture
+
+Instead of one massive script, your daily production pipeline should be broken into three distinct, automated steps that run after the market closes (or right before the open).
+
+**1. The Technical Engine (The Timing)**
+This is a lightweight script that strips out all the backtesting overhead.
+
+* It wakes up, downloads just the last 60 days of price data for your chosen ticker (e.g., NVDA).
+* It runs the pre-approved strategy (e.g., `Breakout(20d)`).
+* It outputs a simple binary signal for tomorrow's open: `BUY`, `SELL`, or `HOLD`.
+
+**2. The Market Research Agent (The Context)**
+This is where your LLM integration shines. While the Technical Engine looks at prices, this Agent looks at reality.
+
+* **News & Sentiment:** It pulls the top 10 news headlines from the last 24 hours via an API (like Alpaca, Finnhub, or Yahoo Finance) and uses an LLM to score the sentiment (Positive, Negative, Neutral).
+* **Earnings & Events:** It checks an economic calendar. (Rule of thumb: *Never* buy a technical breakout one day before an earnings report, as the volatility crush can destroy your stop-loss).
+* **The Output:** The Agent outputs a fundamental "Regime Score" or "Risk Flag" (e.g., `GREEN = Safe to trade`, `RED = High risk, stay away`).
+
+**3. The Execution Arbiter (The Final Vote)**
+This is the master script that reads the outputs from both engines and makes the final call.
+
+* If the Technical Engine says `BUY` and the Fundamental Agent says `GREEN`, the Arbiter generates the official trade recommendation.
+* It can then format this recommendation into a clean summary (Entry Price, Stop Loss, Target) and send it to you via email/Discord/Telegram, or—eventually—route it directly to Tastytrade for live execution.
+
+---
+
+keep going and produce the spec file
+
+---
+
+This will be running just for me on my home network which may assist you in simplifying the spec
