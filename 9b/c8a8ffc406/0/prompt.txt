@@ -33,3 +33,7 @@ keep going and produce the spec file
 ---
 
 This will be running just for me on my home network which may assist you in simplifying the spec
+
+---
+
+looks great. Can you proceed to the implementation spec
