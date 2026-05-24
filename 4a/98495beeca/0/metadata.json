@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "4a98495beeca",
+  "session_id": "7cb855d9-3de6-4c8a-9fb7-6f63d8920f5d",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-24T05:27:19.608324Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "7c975e945f13",
+  "token_usage": {
+    "input_tokens": 51,
+    "cache_creation_tokens": 99524,
+    "cache_read_tokens": 940165,
+    "output_tokens": 20359,
+    "api_call_count": 17
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 4145,
+      "user_lines_removed": 0,
+      "agent_lines_added": 941,
+      "agent_lines_removed": 405,
+      "user_added_per_file": {
+        ".python-version": 1,
+        "DEPLOYMENT.md": 79,
+        "TODO.md": 8,
+        "_multi_asset_ensemble.py": 416,
+        "_test_regimes.py": 122,
+        "backtest/llm_analysis.py": 93,
+        "docs/superpowers/plans/2026-04-05-walk-forward-analysis.md": 2326,
+        "tests/test_regime_filtered_strategy.py": 345,
+        "tests/test_trade_analysis_ensembles.py": 166,
+        "tests/test_trade_analysis_wfa_routing.py": 207,
+        "trade_analysis.py": 382
+      }
+    }
+  ]
+}
