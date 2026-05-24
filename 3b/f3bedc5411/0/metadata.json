@@ -1,0 +1,79 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "3bf3bedc5411",
+  "session_id": "7cb855d9-3de6-4c8a-9fb7-6f63d8920f5d",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-24T05:24:21.205005Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "86f6ed21f723",
+  "token_usage": {
+    "input_tokens": 42,
+    "cache_creation_tokens": 92882,
+    "cache_read_tokens": 651112,
+    "output_tokens": 14412,
+    "api_call_count": 13
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 5086,
+      "user_lines_removed": 405,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".python-version": 1,
+        "DEPLOYMENT.md": 79,
+        "TODO.md": 8,
+        "_multi_asset_ensemble.py": 416,
+        "_test_regimes.py": 122,
+        "backtest/benchmarks.py": 6,
+        "backtest/config.py": 19,
+        "backtest/llm_analysis.py": 93,
+        "backtest/optimization.py": 58,
+        "backtest/portfolio.py": 16,
+        "backtest/reporting_html.py": 63,
+        "backtest/runner.py": 230,
+        "backtest/strategy.py": 167,
+        "docs/superpowers/plans/2026-04-05-walk-forward-analysis.md": 2326,
+        "examples/compare_strategies.py": 2,
+        "examples/ensemble_strategy.py": 2,
+        "examples/parameter_sensitivity.py": 2,
+        "examples/walk_forward_analysis.py": 3,
+        "pyproject.toml": 3,
+        "tests/test_regime_filtered_strategy.py": 345,
+        "tests/test_reporting_html.py": 12,
+        "tests/test_trade_analysis_ensembles.py": 166,
+        "tests/test_trade_analysis_wfa_routing.py": 207,
+        "trade_analysis.py": 382,
+        "uv.lock": 358
+      },
+      "user_removed_per_file": {
+        "backtest/benchmarks.py": 5,
+        "backtest/config.py": 17,
+        "backtest/optimization.py": 12,
+        "backtest/portfolio.py": 15,
+        "backtest/reporting_html.py": 29,
+        "backtest/runner.py": 62,
+        "backtest/strategy.py": 5,
+        "bhp_analysis.py": 219,
+        "pyproject.toml": 1,
+        "tests/test_reporting_html.py": 9,
+        "uv.lock": 31
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 5086,
+      "agent_lines_removed": 405
+    }
+  ]
+}
