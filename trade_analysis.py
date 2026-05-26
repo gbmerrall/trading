@@ -20,8 +20,8 @@ from backtest.llm_analysis import generate_executive_summary
 from backtest.optimization import GridSearch, RandomSearch, WalkForwardOptimizer
 from backtest.reporting import plot_equity_curve, plot_parameter_stability
 from backtest.reporting_html import ReportData, WfaEntry, generate_report
-from backtest.strategy_card import CardCandidate, build_card, write_card
 from backtest.runner import compare_strategies
+from backtest.strategy_card import CardCandidate, build_card, write_card
 from backtest.strategy import (
     BollingerBandsStrategy,
     BreakoutStrategy,
