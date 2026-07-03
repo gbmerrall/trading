@@ -9,6 +9,8 @@ Usage:
 """
 
 
+import sys
+
 import yfinance as yf
 
 

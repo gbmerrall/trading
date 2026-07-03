@@ -33,6 +33,58 @@ pip install -e .
 
 ---
 
+## The Main Pipeline: trade_analysis.py
+
+```bash
+uv run python trade_analysis.py SPY
+```
+
+This is the primary entry point. For the given ticker it:
+
+1. Downloads OHLCV history (2020 to present, adjusted prices).
+2. Runs every built-in strategy over the full period for a descriptive comparison
+   (this table is in-sample and used only for context — it does not gate anything).
+3. Runs Walk-Forward Analysis on **every** strategy with a parameter grid defined in
+   `WFA_PARAM_GRIDS` (14 at the time of writing). Strategies are ranked by their WFA
+   **out-of-sample Sharpe ratio**, not the in-sample comparison.
+4. For each candidate, also backtests its fixed `best_params_overall` over the same
+   out-of-sample span, so the card records how the *deployed* parameter set performed —
+   the WFA summary itself is earned by adaptive per-window parameters.
+5. Writes `output/<ticker>_report.html` (full report) and `output/<ticker>_card.json`
+   (the machine-readable strategy card consumed by the daily cron / reconciler).
+
+Run settings live as constants at the top of the script:
+
+| Constant | Default | Meaning |
+|----------|---------|---------|
+| `START_CAPITAL` | 10,000 | Starting capital for every simulation |
+| `COMMISSION_FIXED` | 3.0 | Flat USD fee charged per fill (each buy and each sell) |
+| `COMMISSION_RATE` | 0.0 | Percentage-of-value commission per fill |
+| `SLIPPAGE_PCT` | 0.0005 | 5 bps per fill: buys fill above the open, sells below |
+| `MIN_TRADES` | 3 | Training windows with fewer trades score `-inf` in WFA |
+
+---
+
+## Cost Modelling
+
+Costs are configured on `PortfolioConfig` and applied by the runner to every simulation
+(including WFA training and test windows, and parallel workers):
+
+```python
+from backtest.config import ConfigFactory, set_config
+
+config = ConfigFactory.create_default()
+config.portfolio.commission_fixed = 3.0    # flat fee per fill
+config.portfolio.commission_rate = 0.0     # plus a percentage of trade value
+config.portfolio.slippage_pct = 0.0005     # buys fill higher, sells fill lower
+set_config(config)
+```
+
+Position sizing accounts for costs (shares are sized so cost + commission fits the
+budget), and trade `pnl` is net of both sides' commissions.
+
+---
+
 ## Getting Started
 
 ### 1. Run a basic backtest
@@ -87,6 +139,16 @@ python examples/ensemble_strategy.py MSFT 2019-01-01 2024-01-01
 Combines RSI, MACD, and Bollinger Bands into an ensemble that signals only when at least
 2 of 3 strategies agree. Compares the ensemble against each constituent and Buy & Hold.
 
+### 6. Multi-asset portfolio blend
+
+```bash
+uv run python examples/multi_asset_portfolio.py
+```
+
+Runs two pre-optimised strategies on separate assets (SPY breakout, COIN MACD) and blends
+their equity curves into a capital-weighted portfolio. Illustrative of the blending
+mechanics only — it predates the cost model and uses fixed in-sample parameters.
+
 ### Available objective metrics
 
 The following metrics can be passed as the `objective` parameter to `WalkForwardOptimizer`,
@@ -103,6 +165,14 @@ print(list(METRICS.keys()))
 
 You can also pass any callable with the signature `(portfolio_history, trades) -> float`
 as a custom objective.
+
+Metric conventions worth knowing:
+
+- **Sharpe and Sortino measure excess return** over the configured annual
+  `risk_free_rate` (`BacktestConfig`, default 2%), applied as `rf / 252` daily.
+- **Degenerate windows return `-inf`**: zero-volatility Sharpe, or Sortino with no
+  negative returns, can never win the optimizer.
+- Higher is always better; drawdown-style metrics are negated accordingly.
 
 ---
 
@@ -127,7 +197,7 @@ as a custom objective.
 | `GapStrategy` | Gap trading on overnight price discontinuities (requires Open column) |
 | `FibonacciRetracementStrategy` | Support/resistance at 38.2%, 50%, 61.8% retracement levels (requires High/Low) |
 
-### Composite Strategies
+### Composite and Wrapper Strategies
 
 | Class | Description |
 |-------|-------------|
@@ -135,12 +205,28 @@ as a custom objective.
 | `MomentumStrategy` | Rate-of-Change (ROC) momentum — buy/sell on threshold crossovers |
 | `VolatilityStrategy` | ATR-based volatility breakout detection (requires High/Low) |
 | `EnsembleStrategy` | Wraps multiple sub-strategies, aggregates signals via majority voting |
+| `RegimeFilteredStrategy` | Wraps any strategy; vetoes buys in unfavourable regimes (ADX trend strength or SMA bull/bear filter) |
+
+All strategies shift signals by one bar and the runner executes at the next open, so a
+signal computed from Monday's close trades at Tuesday's open.
 
 ### Walk-Forward Analysis
 
 `WalkForwardOptimizer` optimises any strategy's parameters over a rolling or expanding train
 window and evaluates out-of-sample on the following test window. Results include a stitched
 equity curve, per-window metrics, and the most stable parameter set across all windows.
+
+Methodology details:
+
+- **Full-context signals**: signals for each window are generated on all history up to the
+  window's end, then sliced — lookback indicators are already warm at the window's first
+  bar, so no out-of-sample bars are discarded for warmup.
+- **Position carry**: if the strategy's last entry event fired before a window started,
+  a buy is forced on the window's first bar. Event-based strategies (crossovers) would
+  otherwise idle in cash through windows whose entry signal predates them.
+- **Cost-aware**: commissions and slippage from the global config apply in training and
+  test simulations alike, including parallel workers.
+- `RandomSearch` samples unique combinations (returns the whole grid when `n` covers it).
 
 Pass `n_jobs=-1` to evaluate parameter candidates in parallel using all available CPUs.
 Custom callable objectives fall back to sequential automatically.
@@ -157,7 +243,21 @@ fig.show()
 save_wfa_report(result, output_dir="output", prefix="my_run")
 ```
 
-See [Getting Started](#4-walk-forward-analysis) above for usage.
+### The Strategy Card
+
+`trade_analysis.py` writes `output/<ticker>_card.json` — the single artifact that crosses
+from analysis to deployment. Per candidate it records:
+
+- `params`: the modal best parameter set across WFA windows (`best_params_overall`) —
+  what the daily cron actually trades.
+- `wfa_baseline`: out-of-sample metrics earned by *adaptive* per-window parameters.
+- `fixed_params_baseline`: metrics from a plain backtest of `params` over the same
+  out-of-sample span — the honest estimate for the deployed configuration. If this is
+  much worse than `wfa_baseline`, the strategy's edge depends on re-optimisation.
+
+`recommended` is the candidate with the highest WFA out-of-sample Sharpe. Sanity-check it
+against `param_stability` and the fixed baseline before deploying — the best of 14 noisy
+out-of-sample curves still overstates its true edge (winner's curse).
 
 ---
 
@@ -165,13 +265,22 @@ See [Getting Started](#4-walk-forward-analysis) above for usage.
 
 ```bash
 # Run the full test suite
-pytest
+uv run pytest
 
 # With coverage report
-pytest --cov=backtest -v
+uv run pytest --cov=backtest -v
 ```
 
 ---
+
+## Known Caveats
+
+- Prices come from yfinance with `auto_adjust=True`. History is back-adjusted by later
+  dividends/splits, so the price (and signal) shown for a historical date can drift from
+  what a live run saw on that date — expect small discrepancies when reconciling.
+- Fills are modelled at the open plus/minus slippage; there is no volume or spread model.
+- Single ticker at a time: picking the ticker is itself a selection decision the
+  framework cannot de-bias.
 
 ## Scope Constraints
 

@@ -13,6 +13,9 @@ Usage:
 """
 
 
+import sys
+from pathlib import Path
+
 import yfinance as yf
 
 
