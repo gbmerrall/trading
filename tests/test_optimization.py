@@ -54,10 +54,13 @@ class TestRandomSearch:
         r2 = RandomSearch(n=10, seed=2).generate(space)
         assert r1 != r2
 
-    def test_n_larger_than_space_returns_all_with_replacement(self):
+    def test_n_larger_than_space_returns_each_combo_exactly_once(self):
+        # Sampling with replacement would evaluate duplicates; when n covers the
+        # whole space, just return every combination once.
         rs = RandomSearch(n=20, seed=42)
         result = rs.generate({"a": [1, 2, 3]})
-        assert len(result) == 20
+        assert len(result) == 3
+        assert sorted(r["a"] for r in result) == [1, 2, 3]
 
     def test_returns_list_of_dicts(self):
         rs = RandomSearch(n=3, seed=0)
@@ -162,71 +165,6 @@ class TestGenerateWindows:
         data = self._make_data(200)
         with pytest.raises(ValidationError):
             _generate_windows(data, train_size=100, test_size=50, window_type="invalid")
-
-
-class TestFilterByWarmup:
-    """Tests for the _filter_by_warmup module-level function."""
-
-    def _make_history(self, dates):
-        return [{"date": d, "value": 10000.0 + i * 10} for i, d in enumerate(dates)]
-
-    def _make_trades(self, exit_dates):
-        return [
-            {
-                "entry_date": d - pd.Timedelta(days=1),
-                "exit_date": d,
-                "entry": 100.0,
-                "exit": 110.0,
-                "shares": 1,
-                "pnl": 10.0,
-            }
-            for d in exit_dates
-        ]
-
-    def test_removes_history_before_cutoff(self):
-        from backtest.optimization import _filter_by_warmup
-        dates = pd.date_range("2020-01-01", periods=10, freq="B")
-        history = self._make_history(dates)
-        cutoff = dates[3]
-        filtered_h, _ = _filter_by_warmup(history, [], cutoff)
-        assert all(e["date"] >= cutoff for e in filtered_h)
-        assert len(filtered_h) == 7
-
-    def test_removes_trades_before_cutoff(self):
-        from backtest.optimization import _filter_by_warmup
-        dates = pd.date_range("2020-01-01", periods=10, freq="B")
-        trades = self._make_trades(dates)
-        cutoff = dates[5]
-        _, filtered_t = _filter_by_warmup([], trades, cutoff)
-        assert all(t["exit_date"] >= cutoff for t in filtered_t)
-        assert len(filtered_t) == 5
-
-    def test_empty_inputs_return_empty(self):
-        from backtest.optimization import _filter_by_warmup
-        cutoff = pd.Timestamp("2020-01-10")
-        h, t = _filter_by_warmup([], [], cutoff)
-        assert h == []
-        assert t == []
-
-    def test_cutoff_at_start_returns_all(self):
-        from backtest.optimization import _filter_by_warmup
-        dates = pd.date_range("2020-01-01", periods=5, freq="B")
-        history = self._make_history(dates)
-        trades = self._make_trades(dates)
-        cutoff = dates[0]
-        h, t = _filter_by_warmup(history, trades, cutoff)
-        assert len(h) == 5
-        assert len(t) == 5
-
-    def test_cutoff_after_all_returns_empty(self):
-        from backtest.optimization import _filter_by_warmup
-        dates = pd.date_range("2020-01-01", periods=5, freq="B")
-        history = self._make_history(dates)
-        trades = self._make_trades(dates)
-        cutoff = dates[-1] + pd.Timedelta(days=1)
-        h, t = _filter_by_warmup(history, trades, cutoff)
-        assert h == []
-        assert t == []
 
 
 class TestWalkForwardOptimizerInit:
@@ -598,20 +536,23 @@ class TestWalkForwardResult:
         assert test_size in captured_lengths, "No test-window runner calls observed"
         assert train_size in captured_lengths, "No train-window runner calls observed"
 
-    def test_equity_curve_length_equals_test_windows_minus_warmup(self):
-        """Equity curve length must equal sum(test_size - warmup_period) across windows."""
+    def test_equity_curve_length_equals_full_test_windows(self):
+        """Equity curve must cover every test-window bar.
+
+        Signals are generated on full history context, so indicators are already
+        warm at each test window's first bar — no warmup bars are discarded.
+        """
         from backtest.optimization import WalkForwardOptimizer, _generate_windows
         from backtest.strategy import ConsecutiveDaysStrategy
 
         n = 500
         test_size = 50
         train_size = 150
-        consecutive_days = 1  # warmup_period = consecutive_days = 1
 
         data = self._make_oscillating_data(n=n)
         opt = WalkForwardOptimizer(
             strategy_class=ConsecutiveDaysStrategy,
-            param_space={"consecutive_days": [consecutive_days]},
+            param_space={"consecutive_days": [1]},
             data=data,
             train_size=train_size,
             test_size=test_size,
@@ -621,8 +562,7 @@ class TestWalkForwardResult:
         result = opt.run()
 
         windows = _generate_windows(data, train_size, test_size, "sliding")
-        warmup = consecutive_days  # warmup_period == consecutive_days for this strategy
-        expected_length = len(windows) * (test_size - warmup)
+        expected_length = len(windows) * test_size
 
         assert len(result.equity_curve) == expected_length, (
             f"Expected equity curve length {expected_length}, got {len(result.equity_curve)}"

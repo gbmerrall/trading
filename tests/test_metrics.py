@@ -131,8 +131,8 @@ class TestMETRICSRegistry:
 
 class TestSharpeRatio:
     def test_positive_returns_positive_sharpe(self):
-        # Steady 0.1% daily gain → positive Sharpe
-        values = [10000 * (1.001 ** i) for i in range(100)]
+        # 0.1% daily gain with noise: comfortably above the daily risk-free rate
+        values = [10000 * (1.001 ** i) * (1 + (0.002 if i % 2 else -0.002)) for i in range(100)]
         h = _history(values)
         result = sharpe_ratio(h, [])
         assert result > 0
@@ -147,14 +147,33 @@ class TestSharpeRatio:
     def test_single_bar_returns_neginf(self):
         assert sharpe_ratio(_history([10000]), []) == float("-inf")
 
+    def test_zero_volatility_positive_drift_returns_neginf(self):
+        # Constant daily return → std = 0. A degenerate window must never win the
+        # optimizer, so this is -inf rather than a huge sentinel value.
+        values = [10000 * (1.0001 ** i) for i in range(50)]
+        h = _history(values)
+        assert sharpe_ratio(h, []) == float("-inf")
+
+    def test_known_value_uses_excess_return_over_risk_free(self):
+        # Values [10000, 10000, 9900] → daily_returns = [0.0, -0.01]
+        # mean = -0.005, sample std = 0.01/sqrt(2)
+        # sharpe = (mean - rf/252) / std * sqrt(252)
+        from backtest.config import get_backtest_config
+
+        h = _history([10000, 10000, 9900])
+        rf_daily = get_backtest_config().risk_free_rate / 252
+        std = 0.01 / math.sqrt(2)
+        expected = (-0.005 - rf_daily) / std * math.sqrt(252)
+        assert sharpe_ratio(h, []) == pytest.approx(expected, rel=1e-6)
+
 
 class TestSortinoRatio:
-    def test_only_upside_returns_high_value(self):
-        # All positive returns → downside std = 0 → very high sortino
+    def test_only_upside_returns_neginf(self):
+        # No negative returns → downside deviation undefined. Degenerate windows
+        # must never win the optimizer, so this is -inf rather than a huge value.
         values = [10000 * (1.001 ** i) for i in range(100)]
         h = _history(values)
-        result = sortino_ratio(h, [])
-        assert result > 0
+        assert sortino_ratio(h, []) == float("-inf")
 
     def test_flat_returns_neginf(self):
         h = _history([10000] * 50)
@@ -163,9 +182,14 @@ class TestSortinoRatio:
     def test_empty_history_returns_neginf(self):
         assert sortino_ratio([], []) == float("-inf")
 
-    def test_greater_than_sharpe_for_positive_returns(self):
-        # When all returns are positive, sortino >= sharpe (no downside penalty)
-        values = [10000 * (1.001 ** i) for i in range(100)]
+    def test_greater_than_sharpe_for_upward_series_with_downside(self):
+        # Upward drift with occasional dips: sortino only penalises the dips,
+        # so it should exceed sharpe on the same series.
+        values = []
+        v = 10000.0
+        for i in range(100):
+            v *= 0.998 if i % 5 == 4 else 1.003
+            values.append(v)
         h = _history(values)
         assert sortino_ratio(h, []) >= sharpe_ratio(h, [])
 
@@ -174,10 +198,12 @@ class TestSortinoRatio:
         # negative_returns = [-0.01]
         # Standard semi-dev from zero: sqrt((-0.01)^2 / 1) = 0.01
         # mean_return = mean([0.0, -0.01]) = -0.005
-        # sortino = -0.005 / 0.01 * sqrt(252) = -0.5 * sqrt(252)
-        import math
+        # sortino = (mean - rf/252) / 0.01 * sqrt(252)
+        from backtest.config import get_backtest_config
+
         h = _history([10000, 10000, 9900])
-        expected = (-0.005 / 0.01) * math.sqrt(252)
+        rf_daily = get_backtest_config().risk_free_rate / 252
+        expected = ((-0.005 - rf_daily) / 0.01) * math.sqrt(252)
         assert sortino_ratio(h, []) == pytest.approx(expected, rel=1e-6)
 
 

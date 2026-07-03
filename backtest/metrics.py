@@ -28,6 +28,13 @@ MetricFn = Callable[[list[dict], list[dict]], float]
 TRADING_DAYS = TradingConstants.TRADING_DAYS_PER_YEAR
 
 
+def _risk_free_daily() -> float:
+    """Return the configured annual risk-free rate as a simple daily rate."""
+    from .config import get_backtest_config
+
+    return get_backtest_config().risk_free_rate / TRADING_DAYS
+
+
 def total_return(portfolio_history: list[dict], trades: list[dict]) -> float:
     """Return (final_value - initial_value) / initial_value.
 
@@ -115,7 +122,11 @@ def ulcer_index(portfolio_history: list[dict], trades: list[dict]) -> float:
 
 
 def sharpe_ratio(portfolio_history: list[dict], trades: list[dict]) -> float:
-    """Return annualised Sharpe ratio (mean daily return / std daily return).
+    """Return annualised Sharpe ratio of excess returns over the risk-free rate.
+
+    Uses the configured annual risk_free_rate (BacktestConfig) divided by 252
+    as the daily hurdle. Zero-volatility histories return float('-inf') so a
+    degenerate window can never win the optimizer.
 
     Args:
         portfolio_history: List of {'date', 'value'} dicts.
@@ -130,18 +141,23 @@ def sharpe_ratio(portfolio_history: list[dict], trades: list[dict]) -> float:
     daily_returns = values.pct_change().dropna()
     if len(daily_returns) < 1:
         return float("-inf")
-    
-    mean_return = float(daily_returns.mean())
+
+    mean_excess = float(daily_returns.mean()) - _risk_free_daily()
     std = float(daily_returns.std())
-    
+
     if std < 1e-12:
-        return 1e6 if mean_return > 0 else float("-inf")
-        
-    return mean_return / std * math.sqrt(TRADING_DAYS)
+        return float("-inf")
+
+    return mean_excess / std * math.sqrt(TRADING_DAYS)
 
 
 def sortino_ratio(portfolio_history: list[dict], trades: list[dict]) -> float:
-    """Return annualised Sortino ratio (mean daily return / downside deviation).
+    """Return annualised Sortino ratio of excess returns over the risk-free rate.
+
+    Uses the configured annual risk_free_rate (BacktestConfig) divided by 252
+    as the daily hurdle. Histories with no negative returns have an undefined
+    downside deviation and return float('-inf') so a degenerate window can
+    never win the optimizer.
 
     Args:
         portfolio_history: List of {'date', 'value'} dicts.
@@ -157,20 +173,20 @@ def sortino_ratio(portfolio_history: list[dict], trades: list[dict]) -> float:
     daily_returns = values.pct_change().dropna()
     if len(daily_returns) < 1:
         return float("-inf")
-    
-    mean_return = float(daily_returns.mean())
+
+    mean_excess = float(daily_returns.mean()) - _risk_free_daily()
     negative_returns = daily_returns[daily_returns < 0]
-    
+
     if len(negative_returns) == 0:
-        return 1e6 if mean_return > 0 else float("-inf")
+        return float("-inf")
 
     # Standard semi-deviation from zero: sqrt(mean(r^2)) for r in negative_returns
     downside_std = float(math.sqrt(float((negative_returns ** 2).mean())))
 
     if downside_std < 1e-12:
-        return 1e6 if mean_return > 0 else float("-inf")
-        
-    return mean_return / downside_std * math.sqrt(TRADING_DAYS)
+        return float("-inf")
+
+    return mean_excess / downside_std * math.sqrt(TRADING_DAYS)
 
 
 def calmar_ratio(portfolio_history: list[dict], trades: list[dict]) -> float:

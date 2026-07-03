@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from .config import PortfolioConfig
 from .metrics import METRICS, MetricFn
 from .strategy import BaseStrategy
 from .validation import ValidationError
@@ -79,8 +80,8 @@ class GridSearch:
 class RandomSearch:
     """Random sampling of parameter combinations.
 
-    Samples n combinations uniformly at random. If n exceeds the total number
-    of unique combinations, samples with replacement.
+    Samples n unique combinations uniformly at random. If n meets or exceeds
+    the total number of combinations, every combination is returned exactly once.
 
     Args:
         n: Number of combinations to sample.
@@ -101,21 +102,22 @@ class RandomSearch:
         self.seed = seed
 
     def generate(self, param_space: dict[str, list]) -> list[dict]:
-        """Return n randomly sampled combinations from param_space.
+        """Return up to n unique randomly sampled combinations from param_space.
 
         Args:
             param_space: Mapping of parameter names to lists of candidate values.
 
         Returns:
-            List of n dicts, each a sampled combination.
+            List of dicts, each a unique sampled combination.
         """
         all_combos = GridSearch().generate(param_space)
         if not all_combos:
             return []
-            
-        rng = random.Random(self.seed)
+
         if self.n >= len(all_combos):
-            return rng.choices(all_combos, k=self.n)
+            return all_combos
+
+        rng = random.Random(self.seed)
         return rng.sample(all_combos, k=self.n)
 
 
@@ -165,70 +167,112 @@ def _generate_windows(
     return windows
 
 
-def _filter_by_warmup(
-    portfolio_history: list[dict],
-    trades: list[dict],
-    cutoff_date: pd.Timestamp,
-) -> tuple[list[dict], list[dict]]:
-    """Remove portfolio history entries and trades before the cutoff date.
+def _carry_in_position(signals_full: pd.DataFrame, window_start) -> bool:
+    """Return True if the strategy is long entering the window.
 
-    This is used to exclude the warmup period from metric scoring after
-    BacktestRunnerImpl has run on the full window slice.
+    Determined from the full-context signals: if the most recent buy/sell event
+    strictly before window_start is a buy, the strategy would be holding a
+    position at the window boundary.
 
     Args:
-        portfolio_history: List of {'date', 'value'} dicts.
-        trades: List of trade dicts with 'exit_date' key.
-        cutoff_date: First date to INCLUDE in the filtered output.
+        signals_full: Signals over the full context with 'buy'/'sell' columns.
+        window_start: First timestamp of the window (excluded from the scan).
 
     Returns:
-        Tuple of (filtered_portfolio_history, filtered_trades).
+        True if long at the boundary, False if flat or no prior events.
     """
-    filtered_history = [e for e in portfolio_history if e["date"] >= cutoff_date]
-    filtered_trades = [t for t in trades if t["exit_date"] >= cutoff_date]
-    return filtered_history, filtered_trades
+    prior = signals_full.loc[signals_full.index < window_start]
+    buys = prior.index[prior["buy"].fillna(False).astype(bool)]
+    sells = prior.index[prior["sell"].fillna(False).astype(bool)]
+    if len(buys) == 0:
+        return False
+    if len(sells) == 0:
+        return True
+    return buys[-1] > sells[-1]
+
+
+def _window_signals_with_carry(
+    signals_full: pd.DataFrame, window_data: pd.DataFrame
+) -> pd.DataFrame:
+    """Slice signals to the window, carrying an open position across the boundary.
+
+    Windows are simulated with a fresh all-cash portfolio. If the strategy was
+    long entering the window (its entry event fired before the window started),
+    a buy is forced on the first bar so the window re-enters at its opening
+    price — otherwise event-based strategies would idle in cash until the next
+    entry event, understating exposure. No buy is forced if the first bar
+    already carries a sell signal (the position would exit immediately anyway).
+
+    Args:
+        signals_full: Signals over the full context with 'buy'/'sell' columns.
+        window_data: The window slice of price data (index defines the window).
+
+    Returns:
+        A signals DataFrame aligned to window_data.index; the input is not mutated.
+    """
+    window_signals = signals_full.loc[window_data.index].copy()
+    if _carry_in_position(signals_full, window_data.index[0]):
+        if not bool(window_signals["sell"].iloc[0]):
+            window_signals.iloc[0, window_signals.columns.get_loc("buy")] = True
+    return window_signals
 
 
 def _run_candidate_worker(
     strategy_class: type,
     params: dict,
     train_data: pd.DataFrame,
-    warmup_n: int,
+    context_data: pd.DataFrame,
     min_trades: int,
     objective_key: str,
+    base_params: dict | None = None,
+    portfolio_config: PortfolioConfig | None = None,
 ) -> float:
     """Evaluate one parameter set against a training window.
 
     Module-level so ProcessPoolExecutor can pickle it. Returns the objective
     score, or float('-inf') on any failure.
 
+    Signals are generated on context_data (full history up to train_end) then
+    sliced to train_data's index so that lookback indicators have access to data
+    before the training window starts. Because of that context, indicators are
+    already warm at the window's first bar and no warmup filtering is applied.
+
     Args:
         strategy_class: BaseStrategy subclass to instantiate.
-        params: Constructor kwargs for strategy_class.
-        train_data: Training window DataFrame.
-        warmup_n: Bars to exclude from the start when scoring.
+        params: Constructor kwargs for strategy_class (from param_space).
+        train_data: Training window DataFrame (used for portfolio simulation).
+        context_data: Full history up to and including the training window end.
+            Used for signal generation so lookback indicators are not truncated.
         min_trades: Minimum trades required to score (returns -inf otherwise).
         objective_key: Key into METRICS for the objective function.
+        base_params: Fixed constructor kwargs merged with params before instantiation.
+        portfolio_config: PortfolioConfig to install in this process's global config
+            before running. Required for correctness under ProcessPoolExecutor spawn
+            mode, where the parent's config singleton is not inherited.
 
     Returns:
         Objective score as a float.
     """
     from backtest.runner import BacktestRunnerImpl
     from backtest.metrics import METRICS
+    from backtest.config import get_config
+
+    if portfolio_config is not None:
+        get_config().portfolio = portfolio_config
 
     try:
-        strategy = strategy_class(**params)
+        merged = {**(base_params or {}), **params}
+        strategy = strategy_class(**merged)
+        signals_full = strategy.generate_signals(context_data)
+        train_signals = _window_signals_with_carry(signals_full, train_data)
         runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
-        result = runner.run(data=train_data, start_capital=None)
+        result = runner.run(data=train_data, start_capital=None, precomputed_signals=train_signals)
 
         portfolio_history = [
             {"date": d, "value": v}
             for d, v in result["strategy_returns"].items()
         ]
         trades = result["trades"]
-
-        if warmup_n > 0 and len(train_data) > warmup_n:
-            cutoff = train_data.index[warmup_n]
-            portfolio_history, trades = _filter_by_warmup(portfolio_history, trades, cutoff)
 
         if len(trades) < min_trades:
             return float("-inf")
@@ -285,6 +329,7 @@ class WalkForwardOptimizer:
         objective: "str | MetricFn" = "sharpe_ratio",
         min_trades: int = 5,
         n_jobs: int = 1,
+        base_params: dict | None = None,
     ):
         """
         Args:
@@ -297,6 +342,9 @@ class WalkForwardOptimizer:
             searcher: Search strategy. Default: GridSearch().
             objective: Metric to optimise. Default: "sharpe_ratio".
             min_trades: Minimum trades to score a window. Default: 5.
+            base_params: Fixed constructor kwargs always passed to strategy_class,
+                         merged with (and overridden by) each param_space candidate.
+                         Use for required args that should not be part of the search.
 
         Raises:
             ValidationError: If any argument is invalid.
@@ -337,6 +385,7 @@ class WalkForwardOptimizer:
 
         self.strategy_class = strategy_class
         self.param_space = param_space
+        self.base_params: dict = base_params or {}
         self.data = data
         self.train_size = train_size
         self.test_size = test_size
@@ -348,6 +397,21 @@ class WalkForwardOptimizer:
         self._objective_key: str | None = objective if isinstance(objective, str) else None
         self.min_trades = min_trades
         self.n_jobs = n_jobs
+
+    def _context_for(self, window_data: pd.DataFrame) -> pd.DataFrame:
+        """Return all data up to and including the last date of window_data.
+
+        Used to give signal generation the full historical lookback context even
+        when window_data itself is a short slice of self.data.
+
+        Args:
+            window_data: A sliced window from self.data.
+
+        Returns:
+            self.data.iloc[:pos] where pos is one past the last index of window_data.
+        """
+        pos = int(self.data.index.searchsorted(window_data.index[-1], side="right"))
+        return self.data.iloc[:pos]
 
     def _run_train_window(self, train_data: pd.DataFrame) -> dict:
         """Find the best-scoring parameter set for a training window.
@@ -367,43 +431,35 @@ class WalkForwardOptimizer:
         if not candidates:
             return {"best_params": {}, "objective_score": float("-inf")}
 
-        # Warmup period is the same for all candidates of the same strategy class.
-        warmup_n = self.strategy_class(**candidates[0]).warmup_period
-
         actual_jobs = os.cpu_count() or 1 if self.n_jobs == -1 else self.n_jobs
+        # Parallel workers re-resolve the objective from its METRICS key, so a
+        # custom callable objective always evaluates sequentially.
         use_parallel = actual_jobs != 1 and self._objective_key is not None
 
-        if use_parallel and self._objective_key is None:
-            logger.warning(
-                "n_jobs=%s requested but objective is a custom callable; "
-                "falling back to sequential evaluation.",
-                self.n_jobs,
-            )
-
         if use_parallel:
-            return self._run_train_window_parallel(
-                candidates, train_data, warmup_n, actual_jobs
-            )
-        return self._run_train_window_sequential(candidates, train_data, warmup_n)
+            return self._run_train_window_parallel(candidates, train_data, actual_jobs)
+        return self._run_train_window_sequential(candidates, train_data)
 
     def _run_train_window_sequential(
         self,
         candidates: list[dict],
         train_data: pd.DataFrame,
-        warmup_n: int,
     ) -> dict:
-        """Sequential candidate evaluation (original behaviour)."""
+        """Sequential candidate evaluation."""
         from .runner import BacktestRunnerImpl
 
         best_params = candidates[0]
         best_score = float("-inf")
+        context_data = self._context_for(train_data)
 
         for params in candidates:
-            strategy = self.strategy_class(**params)
+            strategy = self.strategy_class(**{**self.base_params, **params})
             runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
 
             try:
-                result = runner.run(data=train_data, start_capital=None)
+                signals_full = strategy.generate_signals(context_data)
+                train_signals = _window_signals_with_carry(signals_full, train_data)
+                result = runner.run(data=train_data, start_capital=None, precomputed_signals=train_signals)
             except Exception as exc:
                 logger.warning(
                     "Candidate skipped during training (params=%s): %s", params, exc
@@ -415,12 +471,6 @@ class WalkForwardOptimizer:
                 for d, v in result["strategy_returns"].items()
             ]
             trades = result["trades"]
-
-            if warmup_n > 0 and len(train_data) > warmup_n:
-                cutoff = train_data.index[warmup_n]
-                portfolio_history, trades = _filter_by_warmup(
-                    portfolio_history, trades, cutoff
-                )
 
             score = (
                 float("-inf")
@@ -438,12 +488,17 @@ class WalkForwardOptimizer:
         self,
         candidates: list[dict],
         train_data: pd.DataFrame,
-        warmup_n: int,
         n_workers: int,
     ) -> dict:
         """Parallel candidate evaluation using ProcessPoolExecutor."""
         best_params = candidates[0]
         best_score = float("-inf")
+        context_data = self._context_for(train_data)
+        # _run_train_window only calls this path when _objective_key is not None
+        assert self._objective_key is not None
+        objective_key: str = self._objective_key
+
+        from .config import get_portfolio_config
 
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
             future_to_params = {
@@ -452,9 +507,11 @@ class WalkForwardOptimizer:
                     self.strategy_class,
                     params,
                     train_data,
-                    warmup_n,
+                    context_data,
                     self.min_trades,
-                    self._objective_key,
+                    objective_key,
+                    self.base_params,
+                    get_portfolio_config(),
                 ): params
                 for params in candidates
             }
@@ -508,12 +565,16 @@ class WalkForwardOptimizer:
             objective_score = train_result["objective_score"]
 
             # --- Evaluate on test window ---
-            strategy = self.strategy_class(**best_params)
-            warmup_n = strategy.warmup_period
+            # Signals are generated on full history up to test_end so that lookback
+            # indicators (e.g. a 100-bar MA) are not truncated by the 63-bar test slice.
+            strategy = self.strategy_class(**{**self.base_params, **best_params})
             runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
 
             try:
-                test_run = runner.run(data=test_data, start_capital=None)
+                test_context = self._context_for(test_data)
+                signals_full = strategy.generate_signals(test_context)
+                test_signals = _window_signals_with_carry(signals_full, test_data)
+                test_run = runner.run(data=test_data, start_capital=None, precomputed_signals=test_signals)
             except Exception as exc:
                 logger.warning(
                     "Test window failed (params=%s, test_start=%s): %s",
@@ -536,21 +597,13 @@ class WalkForwardOptimizer:
                 continue
 
             test_equity = test_run["strategy_returns"]
-            test_portfolio_history = [
+            # Signals come from full context, so every test-window bar is live:
+            # no warmup bars are discarded from scoring.
+            scored_history = [
                 {"date": d, "value": v} for d, v in test_equity.items()
             ]
-            test_trades = test_run["trades"]
-
-            # Apply warmup buffer to scoring
-            if warmup_n > 0 and len(test_data) > warmup_n:
-                cutoff = test_data.index[warmup_n]
-                scored_history, scored_trades = _filter_by_warmup(
-                    test_portfolio_history, test_trades, cutoff
-                )
-                scored_equity = test_equity[test_equity.index >= cutoff]
-            else:
-                scored_history, scored_trades = test_portfolio_history, test_trades
-                scored_equity = test_equity
+            scored_trades = test_run["trades"]
+            scored_equity = test_equity
 
             # Calculate all 10 metrics for this window
             row = {
