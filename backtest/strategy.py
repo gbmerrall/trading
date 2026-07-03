@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import ta
+import ta.momentum
+import ta.trend
+import ta.volatility
 
 from .validation import (
     validate_dataframe,
@@ -85,7 +88,7 @@ class ConsecutiveDaysStrategy(BaseStrategy):
     down days and a sell signal after a number of consecutive up days.
     """
     
-    def __init__(self, consecutive_days: int = None):
+    def __init__(self, consecutive_days: Optional[int] = None):
         """
         Initialize the strategy.
         
@@ -792,7 +795,7 @@ class BollingerBandsStrategy(BaseStrategy):
         bb_indicator = ta.volatility.BollingerBands(
             close=data['Close'],
             window=self.period,
-            window_dev=self.std_dev
+            window_dev=self.std_dev,  # type: ignore  # ta stubs type as int; float is valid
         )
         lower_band = bb_indicator.bollinger_lband()
         upper_band = bb_indicator.bollinger_hband()
@@ -1202,7 +1205,7 @@ class FibonacciRetracementStrategy(BaseStrategy):
     Buys near support (61.8% retracement) and sells near resistance (38.2% retracement).
     """
 
-    def __init__(self, swing_lookback: int = 20, retracement_levels: list = None):
+    def __init__(self, swing_lookback: int = 20, retracement_levels: Optional[list[float]] = None):
         """
         Initialize the Fibonacci Retracement strategy.
 
@@ -1501,7 +1504,7 @@ class MeanReversionStrategy(BaseStrategy):
         bb_indicator = ta.volatility.BollingerBands(
             close=close_prices,
             window=self.bb_period,
-            window_dev=self.bb_std
+            window_dev=self.bb_std,  # type: ignore  # ta stubs type as int; float is valid
         )
         lower_band = bb_indicator.bollinger_lband()
         upper_band = bb_indicator.bollinger_hband()
@@ -1884,4 +1887,163 @@ class EnsembleStrategy(BaseStrategy):
         # so no additional shifting needed here
 
 
+        return signals
+
+
+class RegimeFilteredStrategy(BaseStrategy):
+    """Wrapper that applies a macroscopic regime filter to any BaseStrategy.
+
+    Buy signals from the wrapped strategy are vetoed when the market is in an
+    unfavorable regime (weak trend for ADX, bear market for SMA).  Sell signals
+    are always passed through so open positions can exit cleanly.
+
+    The regime indicator is shifted by 1 bar before application to prevent
+    lookahead bias — regime state is determined from yesterday's close, not
+    today's.
+    """
+
+    _ADX_LOOKBACK = 14
+
+    def __init__(
+        self,
+        base_strategy: "BaseStrategy",
+        regime_type: str = "ADX",
+        adx_threshold: float = 25.0,
+        sma_period: int = 200,
+        **base_kwargs: Any,
+    ):
+        """
+        Initialize the regime-filtered wrapper.
+
+        Args:
+            base_strategy: Any BaseStrategy instance whose signals will be filtered.
+            regime_type: 'ADX' (trend strength) or 'SMA' (bull/bear environment).
+            adx_threshold: ADX value above which the regime is considered favorable.
+                           Only used when regime_type='ADX'.
+            sma_period: Rolling window for SMA calculation.
+                        Only used when regime_type='SMA'.
+            **base_kwargs: Extra keyword arguments forwarded to
+                           base_strategy.set_parameters().  This allows
+                           WalkForwardOptimizer to tune base-strategy parameters
+                           (e.g. lookback_period) alongside wrapper parameters in
+                           the same flat param_grid without subclassing.
+
+        Raises:
+            ValidationError: If any parameter is invalid.
+        """
+        if not isinstance(base_strategy, BaseStrategy):
+            raise ValidationError("base_strategy must be an instance of BaseStrategy")
+
+        if regime_type not in ("ADX", "SMA"):
+            raise ValidationError(
+                f"regime_type must be 'ADX' or 'SMA', got '{regime_type}'"
+            )
+
+        validate_positive_number(adx_threshold, "adx_threshold")
+        validate_integer(sma_period, "sma_period", min_value=1)
+
+        self.base_strategy = base_strategy
+        self.regime_type = regime_type
+        self.adx_threshold = adx_threshold
+        self.sma_period = sma_period
+
+        if base_kwargs:
+            self.base_strategy.set_parameters(base_kwargs)
+
+    @property
+    def warmup_period(self) -> int:
+        """Return the maximum of the base strategy's warmup and the regime lookback."""
+        regime_lookback = (
+            self._ADX_LOOKBACK if self.regime_type == "ADX" else self.sma_period
+        )
+        return max(self.base_strategy.warmup_period, regime_lookback)
+
+    def get_parameters(self) -> Dict[str, Any]:
+        """Return combined wrapper and base strategy parameters.
+
+        Returns:
+            Merged dict of regime parameters and base strategy parameters,
+            enabling WFA to optimise both simultaneously.
+        """
+        params: Dict[str, Any] = {
+            "regime_type": self.regime_type,
+            "adx_threshold": self.adx_threshold,
+            "sma_period": self.sma_period,
+        }
+        params.update(self.base_strategy.get_parameters())
+        return params
+
+    def set_parameters(self, params: Dict[str, Any]) -> None:
+        """Update wrapper and/or base strategy parameters dynamically.
+
+        Args:
+            params: Dict of parameter names to new values.  Regime keys
+                    ('regime_type', 'adx_threshold', 'sma_period') are consumed
+                    here; all remaining keys are forwarded to the base strategy.
+
+        Raises:
+            ValidationError: If any parameter value is invalid.
+        """
+        if "regime_type" in params:
+            regime_type = params["regime_type"]
+            if regime_type not in ("ADX", "SMA"):
+                raise ValidationError(
+                    f"regime_type must be 'ADX' or 'SMA', got '{regime_type}'"
+                )
+            self.regime_type = regime_type
+
+        if "adx_threshold" in params:
+            validate_positive_number(params["adx_threshold"], "adx_threshold")
+            self.adx_threshold = params["adx_threshold"]
+
+        if "sma_period" in params:
+            validate_integer(params["sma_period"], "sma_period", min_value=1)
+            self.sma_period = params["sma_period"]
+
+        base_keys = {"regime_type", "adx_threshold", "sma_period"}
+        base_params = {k: v for k, v in params.items() if k not in base_keys}
+        if base_params:
+            self.base_strategy.set_parameters(base_params)
+
+    def generate_signals(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Generate regime-filtered buy/sell signals.
+
+        Buy signals from the base strategy are masked to zero when the regime
+        indicator (shifted 1 day to prevent lookahead) is unfavorable.  Sell
+        signals pass through unchanged so positions can always be exited.
+
+        Args:
+            data: OHLCV DataFrame.  Must contain 'High', 'Low', 'Close' for ADX;
+                  'Close' is sufficient for SMA.
+
+        Returns:
+            DataFrame with boolean 'buy' and 'sell' columns on the same index as data.
+
+        Raises:
+            ValidationError: If required columns are missing or data is invalid.
+        """
+        validate_dataframe(data, required_columns=["Close"])
+
+        if self.regime_type == "ADX":
+            validate_dataframe(data, required_columns=["High", "Low", "Close"])
+            adx_indicator = ta.trend.ADXIndicator(
+                high=data["High"],
+                low=data["Low"],
+                close=data["Close"],
+                window=self._ADX_LOOKBACK,
+            )
+            regime_raw = adx_indicator.adx() > self.adx_threshold
+        else:
+            sma = data["Close"].rolling(window=self.sma_period, min_periods=self.sma_period).mean()
+            regime_raw = data["Close"] > sma
+
+        # Shift regime by 1 to use yesterday's regime state, preventing lookahead bias.
+        regime_favorable = regime_raw.shift(1).fillna(False).astype(bool)
+
+        base_signals = self.base_strategy.generate_signals(data)
+
+        signals = base_signals.copy()
+        signals["buy"] = (base_signals["buy"] & regime_favorable).astype(bool)
+        signals["sell"] = base_signals["sell"].astype(bool)
+        # sell signals are intentionally NOT masked — allow graceful exits
         return signals

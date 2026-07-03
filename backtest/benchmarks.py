@@ -8,6 +8,7 @@ All benchmarks inherit from a common base class and use configuration for parame
 import pandas as pd
 import yfinance as yf
 from abc import ABC, abstractmethod
+from typing import Optional
 from .validation import validate_positive_number, ValidationError
 from .config import get_benchmark_config
 
@@ -219,16 +220,16 @@ class DollarCostAveraging(BaseBenchmark):
         Returns:
             DatetimeIndex of investment dates
         """
-        all_dates = data.index
-        
+        all_dates = pd.DatetimeIndex(data.index)
+
         if self.frequency == 'daily':
             return all_dates
         elif self.frequency == 'weekly':
             # Invest on Mondays (weekday 0)
-            return all_dates[all_dates.weekday == 0]
+            return all_dates[all_dates.weekday == 0]  # type: ignore
         else:
             # monthly: invest on first day of each month
-            return all_dates[all_dates.day == 1]
+            return all_dates[all_dates.day == 1]  # type: ignore
     
     def calculate_returns(self, data: pd.DataFrame, start_capital: float) -> pd.Series:
         """
@@ -277,7 +278,7 @@ class DollarCostAveraging(BaseBenchmark):
 
 
 # Convenience function for creating common benchmark combinations
-def create_standard_benchmarks(spy_symbol: str = None, dca_frequency: str = None) -> list[BaseBenchmark]:
+def create_standard_benchmarks(spy_symbol: Optional[str] = None, dca_frequency: Optional[str] = None) -> list[BaseBenchmark]:
     """
     Create a standard set of benchmarks for comparison.
     
