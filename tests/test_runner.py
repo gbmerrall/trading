@@ -719,6 +719,24 @@ class TestWarmupTrim:
         expected_start = data.index[warmup]
         assert results["strategy_returns"].index[0] == expected_start
 
+    def test_no_warmup_trim_with_precomputed_signals(self):
+        """Precomputed signals come from a wider context, so every bar is live.
+
+        The warmup trim only applies when the runner generates signals itself;
+        trimming precomputed windows would discard real out-of-sample bars.
+        """
+        warmup = 5
+        n = 20
+        data = self._make_data(n)
+
+        strategy = ConsecutiveDaysStrategy(consecutive_days=warmup)
+        signals = pd.DataFrame({"buy": [False] * n, "sell": [False] * n}, index=data.index)
+        runner = BacktestRunnerImpl(strategy, benchmarks=[])
+        results = runner.run(data, start_capital=10_000.0, precomputed_signals=signals)
+
+        assert len(results["strategy_returns"]) == n
+        assert results["strategy_returns"].index[0] == data.index[0]
+
     def test_strategy_returns_length_equals_n_minus_warmup(self):
         """strategy_returns should have exactly (n - warmup_period) rows."""
         warmup = 5

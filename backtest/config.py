@@ -45,18 +45,26 @@ class PortfolioConfig:
     
     start_capital: float = 10_000.0
     commission_rate: float = 0.0
+    commission_fixed: float = 0.0  # flat currency fee charged per transaction (each buy/sell)
+    slippage_pct: float = 0.0  # fraction of price lost per fill: buys fill higher, sells lower
     default_symbol: str = 'ASSET'
 
     def validate(self) -> None:
         """Validate portfolio configuration."""
         if self.start_capital < ValidationLimits.MIN_START_CAPITAL:
             raise ValueError(f"start_capital must be >= {ValidationLimits.MIN_START_CAPITAL}")
-        
+
         if self.start_capital > ValidationLimits.MAX_START_CAPITAL:
             raise ValueError(f"start_capital must be <= {ValidationLimits.MAX_START_CAPITAL}")
-        
+
         if self.commission_rate > ValidationLimits.MAX_COMMISSION_RATE:
             raise ValueError(f"commission_rate must be <= {ValidationLimits.MAX_COMMISSION_RATE}")
+
+        if self.commission_fixed < 0.0:
+            raise ValueError(f"commission_fixed must be >= 0.0, got {self.commission_fixed}")
+
+        if not (0.0 <= self.slippage_pct < 1.0):
+            raise ValueError(f"slippage_pct must be in [0.0, 1.0), got {self.slippage_pct}")
 
 
 # ==================== STRATEGY CONFIGURATION ====================
@@ -77,6 +85,7 @@ class StrategyConfig:
     minimum_data_points: int = ValidationLimits.MIN_CONSECUTIVE_DAYS
     use_full_capital: bool = True
     position_size_method: str = 'fixed_dollar'  # 'fixed_dollar', 'fixed_shares', 'percentage'
+    position_size_pct: float = 0.10  # fraction of portfolio value per trade when method='percentage'
     
     def validate(self) -> None:
         """Validate strategy configuration."""
@@ -150,6 +159,7 @@ class GlobalConfig:
     environment: str = 'development'  # 'development', 'testing', 'production'
     debug: bool = False
     log_level: str = 'INFO'
+    data_cache_enabled: bool = False
 
     def validate(self) -> None:
         """Validate all configuration components."""
@@ -245,26 +255,26 @@ def load_config_from_environment() -> GlobalConfig:
     config = GlobalConfig()
     
     # Portfolio settings
-    if os.getenv('BACKTEST_START_CAPITAL'):
-        config.portfolio.start_capital = float(os.getenv('BACKTEST_START_CAPITAL'))
-    
-    if os.getenv('BACKTEST_COMMISSION_RATE'):
-        config.portfolio.commission_rate = float(os.getenv('BACKTEST_COMMISSION_RATE'))
-    
+    if val := os.getenv('BACKTEST_START_CAPITAL'):
+        config.portfolio.start_capital = float(val)
+
+    if val := os.getenv('BACKTEST_COMMISSION_RATE'):
+        config.portfolio.commission_rate = float(val)
+
     # Strategy settings
-    if os.getenv('STRATEGY_CONSECUTIVE_DAYS'):
-        config.strategy.consecutive_days = int(os.getenv('STRATEGY_CONSECUTIVE_DAYS'))
-    
+    if val := os.getenv('STRATEGY_CONSECUTIVE_DAYS'):
+        config.strategy.consecutive_days = int(val)
+
     # Benchmark settings
-    if os.getenv('BENCHMARK_SYMBOL'):
-        config.benchmark.market_symbol = os.getenv('BENCHMARK_SYMBOL')
-    
+    if val := os.getenv('BENCHMARK_SYMBOL'):
+        config.benchmark.market_symbol = val
+
     # Environment
-    if os.getenv('BACKTEST_ENVIRONMENT'):
-        config.environment = os.getenv('BACKTEST_ENVIRONMENT')
-    
-    if os.getenv('BACKTEST_DEBUG'):
-        config.debug = os.getenv('BACKTEST_DEBUG').lower() == 'true'
+    if val := os.getenv('BACKTEST_ENVIRONMENT'):
+        config.environment = val
+
+    if val := os.getenv('BACKTEST_DEBUG'):
+        config.debug = val.lower() == 'true'
     
     config.validate()
     return config

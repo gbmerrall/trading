@@ -7,6 +7,7 @@ portfolio analytics.
 """
 
 import pandas as pd
+from pandas.api.typing import NaTType
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
@@ -28,7 +29,7 @@ class Transaction:
         value: Total transaction value (shares * price)
         commission: Commission paid
     """
-    date: pd.Timestamp
+    date: pd.Timestamp | NaTType
     symbol: str
     action: str  # 'BUY' or 'SELL'
     shares: int
@@ -90,33 +91,39 @@ class Portfolio:
     """
     
     def __init__(
-        self, 
-        start_capital: float = None,
-        commission_rate: float = None,
-        default_symbol: str = None
+        self,
+        start_capital: Optional[float] = None,
+        commission_rate: Optional[float] = None,
+        default_symbol: Optional[str] = None,
+        commission_fixed: Optional[float] = None,
     ):
         """
         Initialize portfolio with enhanced configuration support.
-        
+
         Args:
             start_capital: Starting capital amount
             commission_rate: Commission rate (0.0 to 1.0)
             default_symbol: Default symbol for legacy interface
+            commission_fixed: Flat currency fee charged per transaction (each buy/sell)
         """
         # Use hardcoded defaults to avoid config issues
         self.start_capital = start_capital if start_capital is not None else 10000.0
         self.commission_rate = commission_rate if commission_rate is not None else 0.0  # Explicit 0.0 default
+        self.commission_fixed = commission_fixed if commission_fixed is not None else 0.0
         self.default_symbol = default_symbol if default_symbol is not None else 'asset'
-        
+
         # Validate parameters
         validate_positive_number(self.start_capital, "start_capital", max_value=ValidationLimits.MAX_START_CAPITAL)
-        
+
         # Additional validation for start_capital minimum
         if self.start_capital < ValidationLimits.MIN_START_CAPITAL:
             raise ValidationError(f"start_capital must be >= {ValidationLimits.MIN_START_CAPITAL}, got {self.start_capital}")
-        
+
         if not (0.0 <= self.commission_rate <= ValidationLimits.MAX_COMMISSION_RATE):
             raise ValidationError(f"commission_rate must be between 0.0 and {ValidationLimits.MAX_COMMISSION_RATE}")
+
+        if self.commission_fixed < 0.0:
+            raise ValidationError(f"commission_fixed must be >= 0.0, got {self.commission_fixed}")
         
         # Initialize portfolio state
         self.cash = self.start_capital
@@ -203,11 +210,11 @@ class Portfolio:
     # ==================== ENHANCED INTERFACE ====================
     
     def buy(
-        self, 
-        symbol: str, 
-        shares: int, 
-        price: float, 
-        date: Optional[pd.Timestamp] = None
+        self,
+        symbol: str,
+        shares: int,
+        price: float,
+        date: pd.Timestamp | NaTType | None = None,
     ) -> bool:
         """
         Buy shares of a specified asset.
@@ -238,7 +245,7 @@ class Portfolio:
         
         # Calculate costs
         trade_value = shares * price
-        commission = trade_value * self.commission_rate
+        commission = trade_value * self.commission_rate + self.commission_fixed
         total_cost = trade_value + commission
         
         # Check available cash
@@ -275,11 +282,11 @@ class Portfolio:
         return True
     
     def sell(
-        self, 
-        symbol: str, 
-        shares: int, 
-        price: float, 
-        date: Optional[pd.Timestamp] = None
+        self,
+        symbol: str,
+        shares: int,
+        price: float,
+        date: pd.Timestamp | NaTType | None = None,
     ) -> int:
         """
         Sell shares of a specified asset.
@@ -320,7 +327,7 @@ class Portfolio:
         
         # Calculate proceeds
         trade_value = shares_to_sell * price
-        commission = trade_value * self.commission_rate
+        commission = trade_value * self.commission_rate + self.commission_fixed
         net_proceeds = trade_value - commission
         
         # Calculate realized P&L
