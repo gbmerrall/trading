@@ -3,13 +3,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "backtest"
-version = "0.1.0"
+name = "quant-backtest-framework"
+version = "0.2.0"
 description = "Trading strategy backtesting framework with walk-forward analysis"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "google-genai>=2.6.0",
     "kaleido>=1.2.0",
+    "loguru>=0.7.3",
     "numpy>=2.4.4",
     "pandas>=3.0.2",
     "plotly>=6.6.0",
