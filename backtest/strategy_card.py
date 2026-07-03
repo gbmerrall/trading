@@ -28,12 +28,19 @@ _BASELINE_KEYS = (
 
 @dataclass(frozen=True)
 class CardCandidate:
-    """One WFA shortlist candidate destined for the strategy card."""
+    """One WFA candidate destined for the strategy card.
+
+    fixed_baseline holds metrics from a plain backtest of `params` (the exact
+    parameters deployed live) over the WFA out-of-sample span — the WFA summary
+    itself was earned by adaptive per-window parameters, so this is the number
+    that matches what actually gets traded.
+    """
 
     label: str
     strategy_class: str
     params: dict[str, Any]
     summary: dict[str, Any]
+    fixed_baseline: dict[str, Any] | None = None
 
 
 def _baseline(summary: dict[str, Any]) -> dict[str, Any]:
@@ -65,6 +72,7 @@ def build_card(
                 "strategy_class": c.strategy_class,
                 "params": c.params,
                 "wfa_baseline": _baseline(c.summary),
+                "fixed_params_baseline": c.fixed_baseline,
             }
             for c in candidates
         ],

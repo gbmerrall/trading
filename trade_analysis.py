@@ -1,8 +1,10 @@
 """Stock trading strategy analysis.
 
-Runs all built-in strategies against the given ticker, ranks them by Sharpe
-ratio, then runs Walk-Forward Analysis on the Top 5. All results are written
-to output/<ticker>_report.html.
+Runs all built-in strategies against the given ticker for descriptive
+comparison, then runs Walk-Forward Analysis on every strategy with a defined
+parameter grid. Strategies are ranked by their WFA out-of-sample Sharpe ratio
+(the full-period comparison is in-sample and used only for context in the
+report). All results are written to output/<ticker>_report.html.
 
 Usage:
     uv run python trade_analysis.py <TICKER>
@@ -16,11 +18,19 @@ import plotly.graph_objects as go
 import yfinance as yf
 
 from backtest.benchmarks import BuyAndHold, DollarCostAveraging
+from backtest.config import ConfigFactory, set_config
+from backtest.deployment_gate import (
+    compare_verdicts,
+    parse_llm_verdict,
+    render_gate_table,
+    score_candidates,
+)
 from backtest.llm_analysis import generate_executive_summary
 from backtest.optimization import GridSearch, RandomSearch, WalkForwardOptimizer
 from backtest.reporting import plot_equity_curve, plot_parameter_stability
 from backtest.reporting_html import ReportData, WfaEntry, generate_report
-from backtest.runner import compare_strategies
+from backtest.metrics import METRICS
+from backtest.runner import BacktestRunnerImpl, compare_strategies
 from backtest.strategy_card import CardCandidate, build_card, write_card
 from backtest.strategy import (
     BollingerBandsStrategy,
@@ -50,6 +60,22 @@ TICKER = sys.argv[1].upper()
 START_DATE = "2020-01-01"
 END_DATE = "2026-05-01"
 START_CAPITAL = 10_000.0
+# Transaction costs applied to every simulated buy and sell.
+COMMISSION_FIXED = 3.0  # flat USD fee per trade
+COMMISSION_RATE = 0.0  # percentage of trade value
+SLIPPAGE_PCT = 0.0005  # 5 bps per fill: buys fill higher, sells lower
+# Minimum trades a training window needs before its objective score counts.
+MIN_TRADES = 3
+
+
+def apply_run_config() -> None:
+    """Install this script's capital and cost settings as the global config."""
+    config = ConfigFactory.create_default()
+    config.portfolio.start_capital = START_CAPITAL
+    config.portfolio.commission_fixed = COMMISSION_FIXED
+    config.portfolio.commission_rate = COMMISSION_RATE
+    config.portfolio.slippage_pct = SLIPPAGE_PCT
+    set_config(config)
 
 # ---------------------------------------------------------------------------
 # Tier 1: Standalone strategies
@@ -186,7 +212,12 @@ WFA_PARAM_GRIDS: dict[str, dict] = {
 
 
 def download_data(ticker: str, start: str, end: str) -> pd.DataFrame:
-    """Download OHLCV data from yfinance, flattening multi-level columns if needed."""
+    """Download OHLCV data from yfinance, flattening multi-level columns if needed.
+
+    Note: auto_adjust=True back-adjusts history using later dividends/splits, so
+    the price (and signal) shown for a historical date can drift from what a live
+    run saw on that date — expect small discrepancies when reconciling.
+    """
     data = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
     if hasattr(data.columns, "levels"):
         data.columns = data.columns.get_level_values(0)
@@ -248,6 +279,97 @@ def build_comparison_figure(
 # ---------------------------------------------------------------------------
 
 
+def select_wfa_candidates() -> list[tuple]:
+    """Return every strategy with a WFA parameter grid, in STRATEGIES order.
+
+    Selection is intentionally independent of in-sample performance: shortlisting
+    by full-period Sharpe would leak the WFA test windows into strategy choice.
+
+    Returns:
+        List of (name, strategy_class, param_grid, base_params) tuples.
+        base_params is None for standalone strategies.
+    """
+    candidates = []
+    for name, instance in STRATEGIES:
+        config = WFA_PARAM_GRIDS.get(name)
+        if config is None:
+            continue
+        if "param_grid" in config and "base_params" in config:
+            param_grid = config["param_grid"]
+            base_params = config["base_params"]
+        else:
+            param_grid = config
+            base_params = None
+        candidates.append((name, type(instance), param_grid, base_params))
+    return candidates
+
+
+def sort_wfa_entries(entries: list) -> list:
+    """Sort WFA entries by out-of-sample Sharpe ratio, best first.
+
+    Args:
+        entries: Objects with a .result.summary dict containing 'sharpe_ratio'.
+
+    Returns:
+        New list sorted descending; NaN or -inf Sharpe entries rank last.
+    """
+
+    def _key(entry) -> float:
+        sharpe = entry.result.summary.get("sharpe_ratio", float("-inf"))
+        if sharpe != sharpe or sharpe == float("-inf"):  # NaN-safe
+            return float("-inf")
+        return float(sharpe)
+
+    return sorted(entries, key=_key, reverse=True)
+
+
+def run_fixed_params_backtest(
+    data: pd.DataFrame,
+    strategy_class: type,
+    params: dict,
+    base_params: dict | None,
+    oos_start: pd.Timestamp,
+    oos_end: pd.Timestamp,
+) -> dict:
+    """Backtest one fixed parameter set over the WFA out-of-sample span.
+
+    The WFA summary metrics are earned by adaptive per-window parameters, but
+    deployment trades a single fixed set (best_params_overall). This runs that
+    exact set over the same out-of-sample dates so the card's evidence matches
+    what will actually be traded. Signals are generated on full history up to
+    oos_end so lookback indicators are warm at oos_start.
+
+    Args:
+        data: Full price history.
+        strategy_class: BaseStrategy subclass.
+        params: The fixed parameter set (e.g. best_params_overall).
+        base_params: Fixed constructor kwargs for wrapper strategies, or None.
+        oos_start: First date of the WFA out-of-sample span.
+        oos_end: Last date of the WFA out-of-sample span.
+
+    Returns:
+        Dict with sharpe_ratio, total_return, max_drawdown, n_trades.
+    """
+    strategy = strategy_class(**{**(base_params or {}), **params})
+    context = data.loc[:oos_end]
+    signals_full = strategy.generate_signals(context)
+    oos_data = data.loc[oos_start:oos_end]
+    oos_signals = signals_full.loc[oos_data.index]
+
+    runner = BacktestRunnerImpl(strategy=strategy, benchmarks=[])
+    result = runner.run(
+        data=oos_data, start_capital=START_CAPITAL, precomputed_signals=oos_signals
+    )
+    history = [{"date": d, "value": v} for d, v in result["strategy_returns"].items()]
+    trades = result["trades"]
+    return {
+        "sharpe_ratio": METRICS["sharpe_ratio"](history, trades),
+        "total_return": METRICS["total_return"](history, trades),
+        "max_drawdown": METRICS["max_drawdown"](history, trades),
+        "n_trades": len(trades),
+    }
+
+
 def _pick_searcher(param_grid: dict) -> "GridSearch | RandomSearch":
     """Return GridSearch for grids with <= 50 combinations, otherwise RandomSearch."""
     n_combos = 1
@@ -280,7 +402,7 @@ def run_wfa(
         window_type="sliding",
         searcher=_pick_searcher(param_grid),
         objective="sharpe_ratio",
-        min_trades=2,
+        min_trades=MIN_TRADES,
         # Serial is faster here: per-backtest cost (~5ms) is smaller than the
         # ProcessPoolExecutor IPC + fork/join overhead per training window.
         n_jobs=1,
@@ -296,11 +418,13 @@ def run_wfa(
 
 def main() -> None:
     warnings.filterwarnings("ignore")
+    apply_run_config()
     print(f"Downloading {TICKER} ({START_DATE} to {END_DATE})...")
     data = download_data(TICKER, START_DATE, END_DATE)
-    print(f"  {len(data)} trading days loaded.\n")
+    print(f"  {len(data)} trading days loaded.")
+    print(f"  Commissions: ${COMMISSION_FIXED:.2f}/trade + {COMMISSION_RATE:.2%} of value\n")
 
-    print("Running strategy comparison (all strategies, ranked by Sharpe ratio)...")
+    print("Running strategy comparison (full-period, in-sample — context only)...")
     results, benchmark_metrics, benchmark_returns = compare_strategies(
         data,
         STRATEGIES,
@@ -309,31 +433,17 @@ def main() -> None:
         sort_metric="sharpe_ratio",
         top_n=len(STRATEGIES),
     )
-    wfa_candidates = results[:5]
     bh_metrics = benchmark_metrics.get("BuyAndHold", {})
     bh_returns = benchmark_returns.get("BuyAndHold", pd.Series(dtype=float))
     dca_metrics = benchmark_metrics.get("DollarCostAveraging", {})
     dca_returns = benchmark_returns.get("DollarCostAveraging", pd.Series(dtype=float))
     fig_comparison = build_comparison_figure(results, bh_returns, dca_returns)
 
-    print("\nRunning Walk-Forward Analysis on Top 5 shortlist...")
+    candidates = select_wfa_candidates()
+    print(f"\nRunning Walk-Forward Analysis on all {len(candidates)} gridded strategies...")
     print(f"  Data: {len(data)} bars  |  Windows: 252-bar train / 63-bar test")
     wfa_entries = []
-    for name, _, _ in wfa_candidates:
-        instance = next((inst for n, inst in STRATEGIES if n == name), None)
-        if instance is None:
-            continue
-        cls = type(instance)
-        config = WFA_PARAM_GRIDS.get(name)
-        if config is None:
-            print(f"  [skip] {name}: no parameter grid defined.")
-            continue
-        if "param_grid" in config and "base_params" in config:
-            param_grid = config["param_grid"]
-            base_params = config["base_params"]
-        else:
-            param_grid = config
-            base_params = None
+    for name, cls, param_grid, base_params in candidates:
         n_combos = 1
         for v in param_grid.values():
             n_combos *= len(v)
@@ -352,17 +462,34 @@ def main() -> None:
             )
         )
 
+    # Rank by out-of-sample Sharpe: this ordering drives the report and card.
+    wfa_entries = sort_wfa_entries(wfa_entries)
+
+    candidate_lookup = {name: (cls, base_params) for name, cls, _, base_params in candidates}
     card_candidates = []
     for entry in wfa_entries:
-        instance = next((inst for n, inst in STRATEGIES if n == entry.label), None)
-        if instance is None:
-            continue
+        cls, base_params = candidate_lookup[entry.label]
+        oos_start = entry.result.windows["test_start"].iloc[0]
+        oos_end = entry.result.windows["test_end"].iloc[-1]
+        try:
+            fixed_baseline = run_fixed_params_backtest(
+                data=data,
+                strategy_class=cls,
+                params=entry.result.best_params_overall,
+                base_params=base_params,
+                oos_start=oos_start,
+                oos_end=oos_end,
+            )
+        except Exception as exc:
+            print(f"  [warn] Fixed-params backtest failed for {entry.label}: {exc}")
+            fixed_baseline = None
         card_candidates.append(
             CardCandidate(
                 label=entry.label,
-                strategy_class=type(instance).__name__,
+                strategy_class=cls.__name__,
                 params=entry.result.best_params_overall,
                 summary=entry.result.summary,
+                fixed_baseline=fixed_baseline,
             )
         )
     card = build_card(
@@ -376,13 +503,45 @@ def main() -> None:
     write_card(card, card_path)
     print(f"Strategy card written to {card_path}")
 
+    # Deterministic deployment-gate scoring — the objective check on the LLM.
+    # The card above is LLM-independent, so it is always written; the HTML report
+    # below is only emitted if the LLM's verdict survives this check.
+    gate_report = score_candidates(card_candidates, bh_metrics)
+    print("\n" + "=" * 42)
+    print("======= DEPLOYMENT-GATE HARNESS =======")
+    print("=" * 42)
+    print(render_gate_table(gate_report))
+    print("=" * 42)
+
     print("\nGenerating executive summary...")
-    summary = generate_executive_summary(TICKER, wfa_entries, bh_metrics)
+    summary = generate_executive_summary(TICKER, card_candidates, bh_metrics)
     print("=" * 42)
     print("========== EXECUTIVE SUMMARY ==========")
     print("=" * 42)
     print(summary)
     print("=" * 42)
+
+    # Compare the LLM's machine-readable verdict against the harness verdict. A
+    # mismatch (or missing/garbled verdict) halts the pipeline for a human rather
+    # than presenting a suspect summary as a deployment recommendation.
+    parsed = parse_llm_verdict(summary, [c.label for c in card_candidates])
+    outcome = compare_verdicts(gate_report, parsed)
+    if not outcome.ok:
+        print("\n" + "!" * 42)
+        print("HALT - LLM verdict FAILED the harness cross-check")
+        print("!" * 42)
+        print(f"  Harness verdict: {outcome.harness_verdict}")
+        print(f"  LLM verdict:     {outcome.llm_verdict}")
+        print(f"  Reason:          {outcome.reason}")
+        print("\nThe executive summary above is NOT validated and must not be treated")
+        print("as a deployment recommendation. Review the gate table and both verdicts.")
+        print("The HTML report was NOT written. The strategy card was written (it is")
+        print(f"deterministic and LLM-independent): {card_path}")
+        sys.exit(1)
+
+    print(f"\nHarness cross-check PASSED: both agree on '{outcome.harness_verdict}'.")
+    for warning in gate_report.warnings:
+        print(f"  ! {warning}")
 
     generate_report(
         ReportData(
