@@ -52,7 +52,28 @@ tr:nth-child(even) td { background: #fafafa; }
     font-size: 0.875rem;
     line-height: 1.8;
 }
+.executive-summary {
+    background: #fffdf0;
+    border: 1px solid #e0d080;
+    border-left: 4px solid #c0a000;
+    border-radius: 3px;
+    padding: 20px 24px;
+    margin-bottom: 36px;
+    font-size: 0.925rem;
+    line-height: 1.75;
+    white-space: pre-wrap;
+}
 """
+
+
+@dataclass
+class WfaEntry:
+    """WFA results for a single strategy shortlisted for walk-forward analysis."""
+
+    label: str
+    result: Any
+    fig_equity: go.Figure | None
+    fig_params: go.Figure | None
 
 
 @dataclass
@@ -69,10 +90,8 @@ class ReportData:
     dca_metrics: dict
     dca_returns: pd.Series
     fig_comparison: go.Figure
-    wfa_result: Any | None
-    wfa_label: str
-    fig_wfa_equity: go.Figure | None
-    fig_wfa_params: go.Figure | None
+    wfa_entries: list[WfaEntry]
+    executive_summary: str = ""
 
 
 def _build_comparison_table(
@@ -167,6 +186,35 @@ def _build_wfa_table(wfa_result: Any) -> str:
     )
 
 
+def _render_wfa_entry(entry: WfaEntry) -> str:
+    """Render a single WFA entry (one strategy) as an HTML fragment."""
+    wfa_table = _build_wfa_table(entry.result)
+    s = entry.result.summary
+    ret = s["total_return"] * 100
+    ret_class = "positive" if ret >= 0 else "negative"
+    html = (
+        f"<h2>Walk-Forward Analysis: {entry.label}</h2>"
+        f"{wfa_table}"
+        f'<div class="summary-block">'
+        f'Sharpe ratio &nbsp; {s["sharpe_ratio"]:.2f}<br>'
+        f'Total return &nbsp; <span class="{ret_class}">{ret:+.1f}%</span><br>'
+        f'Max drawdown &nbsp; {s["max_drawdown"] * 100:.1f}%<br>'
+        f'Win rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {s["win_rate"] * 100:.1f}%<br>'
+        f'Windows &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {s["n_windows"]} ({s["n_windows_with_trades"]} with trades)<br>'
+        f'Best params &nbsp;&nbsp; {entry.result.best_params_overall}'
+        f"</div>"
+    )
+    if entry.fig_equity is not None:
+        html += entry.fig_equity.to_html(
+            full_html=False, include_plotlyjs=False, config={"displayModeBar": False}
+        )
+    if entry.fig_params is not None:
+        html += entry.fig_params.to_html(
+            full_html=False, include_plotlyjs=False, config={"displayModeBar": False}
+        )
+    return html
+
+
 def generate_report(data: ReportData, output_path: str = "output/report.html") -> None:
     """Assemble all analysis results into a self-contained HTML report and write to disk."""
     run_time = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -178,33 +226,18 @@ def generate_report(data: ReportData, output_path: str = "output/report.html") -
         full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
     )
 
-    if data.wfa_result is not None:
-        wfa_table = _build_wfa_table(data.wfa_result)
-        s = data.wfa_result.summary
-        ret = s["total_return"] * 100
-        ret_class = "positive" if ret >= 0 else "negative"
-        wfa_section = (
-            f"<h2>Walk-Forward Analysis: {data.wfa_label}</h2>"
-            f"{wfa_table}"
-            f'<div class="summary-block">'
-            f'Sharpe ratio &nbsp; {s["sharpe_ratio"]:.2f}<br>'
-            f'Total return &nbsp; <span class="{ret_class}">{ret:+.1f}%</span><br>'
-            f'Max drawdown &nbsp; {s["max_drawdown"] * 100:.1f}%<br>'
-            f'Win rate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {s["win_rate"] * 100:.1f}%<br>'
-            f'Windows &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {s["n_windows"]} ({s["n_windows_with_trades"]} with trades)<br>'
-            f'Best params &nbsp;&nbsp; {data.wfa_result.best_params_overall}'
-            f"</div>"
-        )
-        if data.fig_wfa_equity is not None:
-            wfa_section += data.fig_wfa_equity.to_html(
-                full_html=False, include_plotlyjs=False, config={"displayModeBar": False}
-            )
-        if data.fig_wfa_params is not None:
-            wfa_section += data.fig_wfa_params.to_html(
-                full_html=False, include_plotlyjs=False, config={"displayModeBar": False}
-            )
+    if data.wfa_entries:
+        wfa_section = "".join(_render_wfa_entry(entry) for entry in data.wfa_entries)
     else:
         wfa_section = "<h2>Walk-Forward Analysis</h2><p>No WFA configured.</p>"
+
+    if data.executive_summary:
+        exec_summary_section = (
+            "<h2>Executive Summary</h2>\n"
+            f'<div class="executive-summary">{data.executive_summary}</div>\n'
+        )
+    else:
+        exec_summary_section = ""
 
     html = (
         "<!DOCTYPE html>\n"
@@ -219,6 +252,7 @@ def generate_report(data: ReportData, output_path: str = "output/report.html") -
         f'<p class="meta">{data.start_date} to {data.end_date}'
         f" &nbsp;|&nbsp; Starting capital: ${data.start_capital:,.0f}"
         f" &nbsp;|&nbsp; Run: {run_time}</p>\n"
+        f"{exec_summary_section}"
         "<h2>Strategy Comparison</h2>\n"
         f"{comparison_table}\n"
         f"{chart_comparison}\n"

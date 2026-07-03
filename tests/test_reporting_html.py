@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 
 from backtest.reporting_html import (
     ReportData,
+    WfaEntry,
     _build_comparison_table,
     _build_wfa_table,
     generate_report,
@@ -67,6 +68,14 @@ def make_wfa_result() -> MagicMock:
 
 def make_report_data(wfa_result=None) -> ReportData:
     returns = make_returns()
+    wfa_entries = []
+    if wfa_result is not None:
+        wfa_entries = [WfaEntry(
+            label="MomentumStrategy",
+            result=wfa_result,
+            fig_equity=go.Figure(),
+            fig_params=go.Figure(),
+        )]
     return ReportData(
         ticker="TEST",
         start_date="2020-01-01",
@@ -78,10 +87,7 @@ def make_report_data(wfa_result=None) -> ReportData:
         dca_metrics=make_metrics(6.0),
         dca_returns=returns,
         fig_comparison=go.Figure(),
-        wfa_result=wfa_result,
-        wfa_label="MomentumStrategy",
-        fig_wfa_equity=go.Figure() if wfa_result else None,
-        fig_wfa_params=go.Figure() if wfa_result else None,
+        wfa_entries=wfa_entries,
     )
 
 
@@ -101,13 +107,10 @@ def test_report_data_instantiates():
         dca_metrics=make_metrics(6.0),
         dca_returns=make_returns(),
         fig_comparison=go.Figure(),
-        wfa_result=None,
-        wfa_label="",
-        fig_wfa_equity=None,
-        fig_wfa_params=None,
+        wfa_entries=[],
     )
     assert data.ticker == "TEST"
-    assert data.wfa_result is None
+    assert data.wfa_entries == []
 
 
 # ---------------------------------------------------------------------------
